@@ -337,6 +337,17 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
     let captureTime = Date()
     let idleSecondsAtCapture = InputIdleSnapshot.currentIdleSeconds()
 
+    // Capture frontmost app + URL + window title (AX-based, no-op if Accessibility isn't granted)
+    let (frontBundleId, frontAppName, frontPid): (String?, String?, pid_t?) = await MainActor.run {
+      let app = NSWorkspace.shared.frontmostApplication
+      return (app?.bundleIdentifier, app?.localizedName, app?.processIdentifier)
+    }
+    let (activeURL, activeWindowTitle): (String?, String?) = {
+      guard let pid = frontPid else { return (nil, nil) }
+      let result = BrowserURLReader.read(pid: pid)
+      return (result.url, result.windowTitle)
+    }()
+
     do {
       // 1. Create content filter for the display
       let filter = SCContentFilter(display: display, excludingWindows: [])
@@ -375,7 +386,11 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
       _ = StorageManager.shared.saveScreenshot(
         url: fileURL,
         capturedAt: captureTime,
-        idleSecondsAtCapture: idleSecondsAtCapture
+        idleSecondsAtCapture: idleSecondsAtCapture,
+        activeAppName: frontAppName,
+        activeAppBundle: frontBundleId,
+        activeURL: activeURL,
+        activeWindowTitle: activeWindowTitle
       )
 
       dbg("📸 Screenshot saved: \(fileURL.lastPathComponent) (\(jpegData.count / 1024)KB)")

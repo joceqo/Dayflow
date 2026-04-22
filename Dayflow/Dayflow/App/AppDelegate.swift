@@ -133,6 +133,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // Start inactivity monitoring for idle reset
     InactivityMonitor.shared.start()
 
+    // Start continuous app activity tracking (independent of screenshot cadence)
+    AppActivityTracker.shared.start()
+
     // Start notification service for journal reminders
     NotificationService.shared.start()
 
@@ -260,6 +263,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
   }
 
   func applicationWillTerminate(_ notification: Notification) {
+    // Close any open app activity segment before we exit
+    AppActivityTracker.shared.stop()
+
     // Checkpoint WAL to persist any pending database changes before quit
     // Using .truncate to also reset the WAL file for a clean state
     StorageManager.shared.checkpoint(mode: .truncate)
