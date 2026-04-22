@@ -44,6 +44,10 @@ final class OtherSettingsViewModel: ObservableObject {
   @Published var reprocessErrorMessage: String?
   @Published var showReprocessDayConfirm = false
 
+  @Published var ignoredApps: [IgnoredApp] = []
+  @Published var ignoredAppErrorMessage: String?
+  private var ignoredAppsObserver: NSObjectProtocol?
+
   init() {
     analyticsEnabled = AnalyticsService.shared.isOptedIn
     showDockIcon = UserDefaults.standard.object(forKey: "showDockIcon") as? Bool ?? true
@@ -54,6 +58,66 @@ final class OtherSettingsViewModel: ObservableObject {
     exportStartDate = timelineDisplayDate(from: Date())
     exportEndDate = timelineDisplayDate(from: Date())
     reprocessDayDate = timelineDisplayDate(from: Date())
+    ignoredApps = IgnoredAppsPreferences.apps
+
+    ignoredAppsObserver = NotificationCenter.default.addObserver(
+      forName: IgnoredAppsPreferences.didChangeNotification,
+      object: nil,
+      queue: .main
+    ) { [weak self] _ in
+      self?.ignoredApps = IgnoredAppsPreferences.apps
+    }
+  }
+
+  deinit {
+    if let observer = ignoredAppsObserver {
+      NotificationCenter.default.removeObserver(observer)
+    }
+  }
+
+  func presentAddIgnoredAppPanel() {
+    ignoredAppErrorMessage = nil
+
+    let panel = NSOpenPanel()
+    panel.title = "Select an app to ignore"
+    panel.prompt = "Ignore"
+    panel.canChooseFiles = true
+    panel.canChooseDirectories = false
+    panel.allowsMultipleSelection = true
+    panel.treatsFilePackagesAsDirectories = false
+    panel.directoryURL = URL(fileURLWithPath: "/Applications")
+    if #available(macOS 11.0, *) {
+      panel.allowedContentTypes = [UTType.application]
+    } else {
+      panel.allowedFileTypes = ["app"]
+    }
+
+    guard panel.runModal() == .OK else { return }
+
+    var added = 0
+    var skipped: [String] = []
+    for url in panel.urls {
+      guard let bundle = Bundle(url: url), let bundleId = bundle.bundleIdentifier else {
+        skipped.append(url.lastPathComponent)
+        continue
+      }
+      let displayName =
+        (bundle.infoDictionary?["CFBundleDisplayName"] as? String)
+        ?? (bundle.infoDictionary?["CFBundleName"] as? String)
+        ?? url.deletingPathExtension().lastPathComponent
+      IgnoredAppsPreferences.add(IgnoredApp(bundleId: bundleId, name: displayName))
+      added += 1
+    }
+
+    if added == 0 && !skipped.isEmpty {
+      ignoredAppErrorMessage = "Couldn't read bundle info for: \(skipped.joined(separator: ", "))"
+    } else if !skipped.isEmpty {
+      ignoredAppErrorMessage = "Skipped (no bundle ID): \(skipped.joined(separator: ", "))"
+    }
+  }
+
+  func removeIgnoredApp(bundleId: String) {
+    IgnoredAppsPreferences.remove(bundleId: bundleId)
   }
 
   func markOutputLanguageOverrideEdited() {

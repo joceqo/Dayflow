@@ -334,6 +334,14 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
       return
     }
 
+    let frontBundleId: String? = await MainActor.run {
+      NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    }
+    if let bundleId = frontBundleId, IgnoredAppsPreferences.contains(bundleId: bundleId) {
+      dbg("Screenshot skipped - frontmost app \(bundleId) is in ignored list")
+      return
+    }
+
     let captureTime = Date()
     let idleSecondsAtCapture = InputIdleSnapshot.currentIdleSeconds()
 
