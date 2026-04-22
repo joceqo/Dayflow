@@ -47,6 +47,20 @@ private enum DailyStandupRegenerateState: Equatable {
   case noData
 }
 
+private enum DailyGenerationLogLevel {
+  case info
+  case success
+  case warning
+  case error
+}
+
+private struct DailyGenerationLogEntry: Identifiable {
+  let id = UUID()
+  let timestamp: Date
+  let level: DailyGenerationLogLevel
+  let message: String
+}
+
 private struct DailyStandupSectionTitles {
   let highlights: String
   let tasks: String
@@ -69,6 +83,7 @@ struct DailyView: View {
   @AppStorage("isDailyUnlocked") private var isUnlocked: Bool = false
   @Binding var selectedDate: Date
   @EnvironmentObject private var categoryStore: CategoryStore
+  @ObservedObject private var runtimeConsole = RuntimeConsoleStore.shared
 
   @State private var accessFlowStep: DailyAccessFlowStep = .intro
   @State private var lockScreenConfettiTrigger: Int = 0
@@ -102,6 +117,8 @@ struct DailyView: View {
   @State private var providerAvailabilityTask: Task<Void, Never>? = nil
   @State private var providerAvailability: [DailyRecapProvider: DailyRecapProviderAvailability] =
     [:]
+  @State private var isShowingGenerationLogSheet: Bool = false
+  @State private var generationLogEntries: [DailyGenerationLogEntry] = []
 
   private let betaNoticeCopy =
     "Daily is a new way to visualize your day and turn it into a standup update fast."
@@ -138,6 +155,9 @@ struct DailyView: View {
       guard !newValue else { return }
       accessFlowStep = .intro
       checkNotificationAuthorizationForUnlock()
+    }
+    .sheet(isPresented: $isShowingGenerationLogSheet) {
+      dailyGenerationLogSheet
     }
   }
 
@@ -726,6 +746,7 @@ struct DailyView: View {
         standupCopyButton(scale: scale)
       }
       standupRegenerateButton(scale: scale)
+      generationLogButton(scale: scale)
       dailyProviderButton(scale: scale)
     }
 
@@ -878,6 +899,139 @@ struct DailyView: View {
         standupRegeneratingDotsPhase = 1
       }
     }
+  }
+
+  private func generationLogButton(scale: CGFloat) -> some View {
+    Button {
+      isShowingGenerationLogSheet = true
+    } label: {
+      HStack(spacing: 6 * scale) {
+        Image(systemName: standupRegenerateState == .regenerating ? "waveform.path.ecg" : "text.alignleft")
+          .font(.system(size: 12 * scale, weight: .semibold))
+        Text("Console")
+          .font(.custom("Nunito-Medium", size: 14 * scale))
+          .lineLimit(1)
+      }
+      .foregroundStyle(Color(hex: "3A2A1F"))
+      .padding(.horizontal, 12 * scale)
+      .padding(.vertical, 10 * scale)
+      .background(
+        Capsule(style: .continuous)
+          .fill(Color.white.opacity(0.82))
+      )
+      .overlay(
+        Capsule(style: .continuous)
+          .stroke(Color(hex: "E7D9CF"), lineWidth: max(1, 1.2 * scale))
+      )
+      .contentShape(Capsule(style: .continuous))
+    }
+    .buttonStyle(DailyCopyPressButtonStyle())
+    .pointingHandCursorOnHover(reassertOnPressEnd: true)
+    .accessibilityLabel(Text("Open runtime console"))
+    .help("Open raw runtime logs")
+  }
+
+  private var dailyGenerationLogSheet: some View {
+    NavigationStack {
+      Group {
+        if runtimeConsole.entries.isEmpty && generationLogEntries.isEmpty {
+          ContentUnavailableView(
+            "No logs yet",
+            systemImage: "text.alignleft",
+            description: Text("Run the app and logs will appear here in real time.")
+          )
+        } else {
+          List {
+            if !runtimeConsole.entries.isEmpty {
+              Section("Runtime console (raw)") {
+                ForEach(runtimeConsole.entries) { entry in
+                  VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                      Circle()
+                        .fill(entry.stream == "stderr" ? Color(hex: "D64545") : Color(hex: "4B84FF"))
+                        .frame(width: 8, height: 8)
+                      Text(logTimestamp(entry.timestamp))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.secondary)
+                      Text(entry.stream.uppercased())
+                        .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Color.secondary.opacity(0.85))
+                    }
+                    Text(entry.message)
+                      .font(.system(size: 12, weight: .regular, design: .monospaced))
+                      .textSelection(.enabled)
+                  }
+                  .padding(.vertical, 2)
+                }
+              }
+            }
+
+            if !generationLogEntries.isEmpty {
+              Section("Daily generation trace") {
+                ForEach(generationLogEntries) { entry in
+                  VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                      Circle()
+                        .fill(logColor(for: entry.level))
+                        .frame(width: 8, height: 8)
+                      Text(logTimestamp(entry.timestamp))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.secondary)
+                    }
+                    Text(entry.message)
+                      .font(.system(size: 12, weight: .regular, design: .monospaced))
+                      .textSelection(.enabled)
+                  }
+                  .padding(.vertical, 2)
+                }
+              }
+            }
+          }
+          .listStyle(.inset)
+        }
+      }
+      .navigationTitle("Runtime Console")
+      .toolbar {
+        ToolbarItem(placement: .automatic) {
+          Button("Clear") {
+            generationLogEntries.removeAll()
+            runtimeConsole.clear()
+          }
+          .disabled(runtimeConsole.entries.isEmpty && generationLogEntries.isEmpty)
+        }
+      }
+    }
+    .frame(minWidth: 700, minHeight: 420)
+  }
+
+  private func appendGenerationLog(_ message: String, level: DailyGenerationLogLevel = .info) {
+    print("[DailyTrace] \(message)")
+    generationLogEntries.insert(
+      DailyGenerationLogEntry(timestamp: Date(), level: level, message: message),
+      at: 0
+    )
+    if generationLogEntries.count > 400 {
+      generationLogEntries.removeLast(generationLogEntries.count - 400)
+    }
+  }
+
+  private func logColor(for level: DailyGenerationLogLevel) -> Color {
+    switch level {
+    case .info:
+      return Color(hex: "4B84FF")
+    case .success:
+      return Color(hex: "33A35B")
+    case .warning:
+      return Color(hex: "E89A2D")
+    case .error:
+      return Color(hex: "D64545")
+    }
+  }
+
+  private func logTimestamp(_ date: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "HH:mm:ss.SSS"
+    return formatter.string(from: date)
   }
 
   private func dailyProviderButton(scale: CGFloat) -> some View {
@@ -1186,6 +1340,10 @@ struct DailyView: View {
     guard selectedProvider.canGenerate else {
       standupDraft = .noProviderSelected
       standupRegenerateState = .idle
+      appendGenerationLog(
+        "Run \(regenerateRunId): provider is disabled; generation skipped.",
+        level: .warning
+      )
       return
     }
     let providerProps: [String: Any] = [
@@ -1196,6 +1354,10 @@ struct DailyView: View {
     ]
     guard let sourceDayInfo = standupSourceDay ?? resolveStandupSourceDay(for: targetDay) else {
       standupRegenerateState = .noData
+      appendGenerationLog(
+        "Run \(regenerateRunId): no recent activity window found for \(storageDayString).",
+        level: .warning
+      )
       AnalyticsService.shared.capture(
         "daily_generation_failed",
         providerProps.merging(
@@ -1233,11 +1395,17 @@ struct DailyView: View {
     print(
       "[Daily] Regenerate started run_id=\(regenerateRunId) day=\(dayString) provider=\(selectedProvider.analyticsName) model=\(selectedProvider.modelOrTool ?? "default")"
     )
+    appendGenerationLog(
+      "Run \(regenerateRunId): start day=\(dayString), provider=\(selectedProvider.displayName), model/tool=\(selectedProvider.modelOrTool ?? "default")."
+    )
 
     standupRegenerateState = .regenerating
 
     standupRegenerateTask = Task.detached(priority: .userInitiated) {
       let startedAt = Date()
+      await MainActor.run {
+        appendGenerationLog("Run \(regenerateRunId): loading timeline cards from storage.")
+      }
       let cards = StorageManager.shared.fetchTimelineCards(forDay: dayString)
       guard !cards.isEmpty else {
         guard !Task.isCancelled else { return }
@@ -1246,6 +1414,10 @@ struct DailyView: View {
         await MainActor.run {
           standupRegenerateState = .noData
           standupRegenerateTask = nil
+          appendGenerationLog(
+            "Run \(regenerateRunId): failed, no timeline cards found.",
+            level: .warning
+          )
           AnalyticsService.shared.capture(
             "daily_generation_failed",
             providerProps.merging(
@@ -1284,6 +1456,11 @@ struct DailyView: View {
           tasksTitle: currentTasksTitle,
           blockersTitle: currentBlockersTitle
         ) : ""
+      await MainActor.run {
+        appendGenerationLog(
+          "Run \(regenerateRunId): payload ready cards=\(cards.count), observations=\(observations.count), prior=\(priorEntries.count)."
+        )
+      }
 
       AnalyticsService.shared.capture(
         "daily_generation_payload_built",
@@ -1319,6 +1496,9 @@ struct DailyView: View {
           blockersTitle: currentBlockersTitle
         )
         let regeneratedDraft = try await DailyRecapGenerator.shared.generate(context: context)
+        await MainActor.run {
+          appendGenerationLog("Run \(regenerateRunId): provider response received, validating output.")
+        }
 
         guard let payloadJSON = regeneratedDraft.encodedJSONString() else {
           guard !Task.isCancelled else { return }
@@ -1329,6 +1509,10 @@ struct DailyView: View {
           await MainActor.run {
             standupRegenerateState = .idle
             standupRegenerateTask = nil
+            appendGenerationLog(
+              "Run \(regenerateRunId): failed to encode generated draft into JSON.",
+              level: .error
+            )
             AnalyticsService.shared.capture(
               "daily_generation_failed",
               providerProps.merging(
@@ -1392,6 +1576,10 @@ struct DailyView: View {
               + "day=\(storageDayString)"
           )
           NotificationService.shared.scheduleDailyRecapReadyNotification(forDay: storageDayString)
+          appendGenerationLog(
+            "Run \(regenerateRunId): success in \(latencyMs)ms with \(regeneratedDraft.highlights.count) highlights, \(regeneratedDraft.tasks.count) tasks.",
+            level: .success
+          )
 
           scheduleStandupRegenerateReset()
         }
@@ -1404,6 +1592,10 @@ struct DailyView: View {
         await MainActor.run {
           standupRegenerateState = .idle
           standupRegenerateTask = nil
+          appendGenerationLog(
+            "Run \(regenerateRunId): error \(nsError.domain)#\(nsError.code) - \(nsError.localizedDescription)",
+            level: .error
+          )
           AnalyticsService.shared.capture(
             "daily_generation_failed",
             providerProps.merging(

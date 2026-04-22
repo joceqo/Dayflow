@@ -23,6 +23,14 @@ protocol LLMServicing {
   func processBatch(
     _ batchId: Int64, progressHandler: ((LLMProcessingStep) -> Void)?,
     completion: @escaping (Result<ProcessedBatchResult, Error>) -> Void)
+  /// Process a batch with an explicit provider override (bypasses user's configured primary/backup).
+  /// Used by per-card retry so the user can pick "re-analyze with X".
+  func processBatch(
+    _ batchId: Int64,
+    providerOverride: LLMProviderID?,
+    chatToolOverride: ChatCLITool?,
+    progressHandler: ((LLMProcessingStep) -> Void)?,
+    completion: @escaping (Result<ProcessedBatchResult, Error>) -> Void)
   func generateText(prompt: String) async throws -> String
   func generateTextStreaming(prompt: String) -> AsyncThrowingStream<String, Error>
   /// Rich chat streaming with thinking, tool calls, and text events.
@@ -166,6 +174,16 @@ final class LLMService: LLMServicing {
       chatTool: resolvedChatCLITool(for: providerID, override: chatToolOverride))
   }
 
+  private func enrichedProviderLabel(base: String, providerID: LLMProviderID) -> String {
+    if providerID == .ollama,
+      let modelId = UserDefaults.standard.string(forKey: "llmLocalModelId"),
+      !modelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+      return modelId.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    return base
+  }
+
   private func noProviderError() -> NSError {
     NSError(
       domain: "LLMService",
@@ -259,7 +277,26 @@ final class LLMService: LLMServicing {
           generateActivityCards: provider.generateActivityCards
         ), fallbackState: nil
       )
+    case .apfel:
+      guard let provider = makeApfelProvider() else {
+        throw NSError(
+          domain: "LLMService", code: 10,
+          userInfo: [
+            NSLocalizedDescriptionKey:
+              "Apple Intelligence is not available on this device. Requires macOS 26 or later with Apple Intelligence enabled."
+          ])
+      }
+      return (
+        actions: BatchProviderActions(
+          transcribeScreenshots: provider.transcribeScreenshots,
+          generateActivityCards: provider.generateActivityCards
+        ), fallbackState: nil
+      )
     }
+  }
+
+  private func makeApfelProvider() -> ApfelProvider? {
+    ApfelProvider.makeIfAvailable()
   }
 
   private func makeTimelineProviderContext(
@@ -297,6 +334,28 @@ final class LLMService: LLMServicing {
     }
 
     return ConfiguredBackupProvider(id: backupProvider, chatToolOverride: chatToolOverride)
+  }
+
+  private func configuredTertiaryProvider(
+    primaryProviderID: LLMProviderID,
+    secondaryProviderID: LLMProviderID?
+  ) -> ConfiguredBackupProvider? {
+    guard let tertiaryProvider = LLMProviderRoutingPreferences.loadTertiaryProvider(),
+      tertiaryProvider != primaryProviderID,
+      tertiaryProvider != secondaryProviderID,
+      tertiaryProvider != .dayflow
+    else {
+      return nil
+    }
+
+    let chatToolOverride: ChatCLITool?
+    if tertiaryProvider == .chatGPTClaude {
+      chatToolOverride = LLMProviderRoutingPreferences.loadTertiaryChatCLITool()
+    } else {
+      chatToolOverride = nil
+    }
+
+    return ConfiguredBackupProvider(id: tertiaryProvider, chatToolOverride: chatToolOverride)
   }
 
   private final class GemmaFallbackState {
@@ -349,42 +408,45 @@ final class LLMService: LLMServicing {
     batchId: Int64?,
     primaryContext: TimelineProviderContext,
     activeContext: TimelineProviderContext,
-    backupContext: TimelineProviderContext?,
+    fallbackContexts: [TimelineProviderContext],
     work: (TimelineProviderContext) async throws -> T
   ) async throws -> (value: T, activeContext: TimelineProviderContext, usedProviderBackup: Bool) {
     do {
       let value = try await work(activeContext)
-      let usingBackup = activeContext.id != primaryContext.id
-      return (value, activeContext, usingBackup)
+      return (value, activeContext, activeContext.id != primaryContext.id)
     } catch {
-      guard activeContext.id == primaryContext.id, let backupContext else {
+      guard activeContext.id == primaryContext.id, !fallbackContexts.isEmpty else {
         throw error
       }
 
-      let attemptProps = fallbackProps(
-        operation: operation,
-        batchId: batchId,
-        primaryProvider: primaryContext.id.analyticsName,
-        primaryProviderLabel: primaryContext.providerLabel,
-        backupProvider: backupContext.id.analyticsName,
-        backupProviderLabel: backupContext.providerLabel,
-        error: error
-      )
-      AnalyticsService.shared.capture("llm_timeline_fallback_attempted", attemptProps)
+      var lastError = error
+      for fallbackContext in fallbackContexts {
+        let attemptProps = fallbackProps(
+          operation: operation,
+          batchId: batchId,
+          primaryProvider: primaryContext.id.analyticsName,
+          primaryProviderLabel: primaryContext.providerLabel,
+          backupProvider: fallbackContext.id.analyticsName,
+          backupProviderLabel: fallbackContext.providerLabel,
+          error: lastError
+        )
+        AnalyticsService.shared.capture("llm_timeline_fallback_attempted", attemptProps)
 
-      do {
-        let value = try await work(backupContext)
-        AnalyticsService.shared.capture("llm_timeline_fallback_succeeded", attemptProps)
-        return (value, backupContext, true)
-      } catch {
-        var failureProps = attemptProps
-        let backupError = error as NSError
-        failureProps["backup_error_domain"] = backupError.domain
-        failureProps["backup_error_code"] = backupError.code
-        failureProps["backup_error_message"] = backupError.localizedDescription
-        AnalyticsService.shared.capture("llm_timeline_fallback_failed", failureProps)
-        throw error
+        do {
+          let value = try await work(fallbackContext)
+          AnalyticsService.shared.capture("llm_timeline_fallback_succeeded", attemptProps)
+          return (value, fallbackContext, true)
+        } catch {
+          lastError = error
+          var failureProps = attemptProps
+          let fallbackError = error as NSError
+          failureProps["backup_error_domain"] = fallbackError.domain
+          failureProps["backup_error_code"] = fallbackError.code
+          failureProps["backup_error_message"] = fallbackError.localizedDescription
+          AnalyticsService.shared.capture("llm_timeline_fallback_failed", failureProps)
+        }
       }
+      throw lastError
     }
   }
 
@@ -531,6 +593,14 @@ final class LLMService: LLMServicing {
         },
         generateTextStreaming: provider.generateTextStreaming
       )
+    case .apfel:
+      guard let provider = makeApfelProvider() else { throw noProviderError() }
+      return TextProviderActions(
+        generateText: { prompt in
+          try await provider.generateText(prompt: prompt)
+        },
+        generateTextStreaming: nil
+      )
     }
   }
 
@@ -560,9 +630,25 @@ final class LLMService: LLMServicing {
     .standard
   }
 
-  // Keep the existing processBatch implementation for backward compatibility
+  // Backward-compatible entry point: routes to override-aware method with nils.
   func processBatch(
     _ batchId: Int64, progressHandler: ((LLMProcessingStep) -> Void)? = nil,
+    completion: @escaping (Result<ProcessedBatchResult, Error>) -> Void
+  ) {
+    processBatch(
+      batchId,
+      providerOverride: nil,
+      chatToolOverride: nil,
+      progressHandler: progressHandler,
+      completion: completion
+    )
+  }
+
+  func processBatch(
+    _ batchId: Int64,
+    providerOverride: LLMProviderID?,
+    chatToolOverride: ChatCLITool?,
+    progressHandler: ((LLMProcessingStep) -> Void)?,
     completion: @escaping (Result<ProcessedBatchResult, Error>) -> Void
   ) {
     Task {
@@ -579,9 +665,23 @@ final class LLMService: LLMServicing {
 
       let (_, batchStartTs, batchEndTs, _) = batchInfo
       let processingStartTime = Date()
-      let primaryProviderID = LLMProviderID.from(providerType)
-      let primaryProviderLabel = providerLabel(for: primaryProviderID)
-      let configuredBackup = configuredBackupProvider(primaryProviderID: primaryProviderID)
+      let primaryProviderID = providerOverride ?? LLMProviderID.from(providerType)
+      let primaryChatToolOverride = providerOverride != nil ? chatToolOverride : nil
+      let primaryProviderLabel = providerLabel(
+        for: primaryProviderID, chatToolOverride: primaryChatToolOverride)
+      // When an override is used, skip the configured-backup chain: the caller
+      // explicitly chose this provider and fallback to a different one would be surprising.
+      let configuredBackup =
+        providerOverride == nil
+        ? configuredBackupProvider(primaryProviderID: primaryProviderID)
+        : nil
+      let configuredTertiary =
+        providerOverride == nil
+        ? configuredTertiaryProvider(
+          primaryProviderID: primaryProviderID,
+          secondaryProviderID: configuredBackup?.id
+        )
+        : nil
       let configuredBackupProviderName = configuredBackup?.id.analyticsName
       let configuredBackupProviderLabel = configuredBackup.map {
         providerLabel(for: $0.id, chatToolOverride: $0.chatToolOverride)
@@ -605,7 +705,8 @@ final class LLMService: LLMServicing {
             "llm_provider_label": primaryProviderLabel,
           ])
 
-        let primaryContext = try makeTimelineProviderContext(for: primaryProviderID)
+        let primaryContext = try makeTimelineProviderContext(
+          for: primaryProviderID, chatToolOverride: primaryChatToolOverride)
         let backupContext: TimelineProviderContext? = {
           guard let configuredBackup else { return nil }
           return try? makeTimelineProviderContext(
@@ -613,7 +714,15 @@ final class LLMService: LLMServicing {
             chatToolOverride: configuredBackup.chatToolOverride
           )
         }()
-        backupConfigured = backupContext != nil
+        let tertiaryContext: TimelineProviderContext? = {
+          guard let configuredTertiary else { return nil }
+          return try? makeTimelineProviderContext(
+            for: configuredTertiary.id,
+            chatToolOverride: configuredTertiary.chatToolOverride
+          )
+        }()
+        let fallbackContexts = [backupContext, tertiaryContext].compactMap { $0 }
+        backupConfigured = !fallbackContexts.isEmpty
         if let configuredBackup, backupContext == nil {
           AnalyticsService.shared.capture(
             "llm_timeline_backup_unavailable",
@@ -658,7 +767,7 @@ final class LLMService: LLMServicing {
           batchId: batchId,
           primaryContext: primaryContext,
           activeContext: activeContext,
-          backupContext: backupContext
+          fallbackContexts: fallbackContexts
         ) { context in
           try await context.actions.transcribeScreenshots(screenshots, batchStartDate, batchId)
         }
@@ -759,7 +868,7 @@ final class LLMService: LLMServicing {
           batchId: batchId,
           primaryContext: primaryContext,
           activeContext: activeContext,
-          backupContext: backupContext
+          fallbackContexts: fallbackContexts
         ) { providerContext in
           try await providerContext.actions.generateActivityCards(
             recentObservations, context, batchId)
@@ -773,6 +882,8 @@ final class LLMService: LLMServicing {
         // Note: card generation log is not persisted per-batch yet
 
         // Replace old cards with new ones in the time range
+        let effectiveProviderLabel = enrichedProviderLabel(
+          base: activeContext.providerLabel, providerID: activeContext.id)
         let (insertedCardIds, deletedVideoPaths) = StorageManager.shared
           .replaceTimelineCardsInRange(
             from: windowStartTime,
@@ -788,7 +899,8 @@ final class LLMService: LLMServicing {
                 detailedSummary: card.detailedSummary,
                 distractions: card.distractions,
                 appSites: card.appSites,
-                isBackupGenerated: isBackupGenerated ? true : nil
+                isBackupGenerated: isBackupGenerated ? true : nil,
+                llmLabel: effectiveProviderLabel
               )
             },
             batchId: batchId

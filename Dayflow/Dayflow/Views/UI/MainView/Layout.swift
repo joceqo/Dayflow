@@ -132,6 +132,7 @@ extension MainView {
         case .weekly: tabName = "weekly"
         case .chat: tabName = "dashboard"
         case .journal: tabName = "journal"
+        case .logs: tabName = "logs"
         case .bug: tabName = "bug_report"
         case .settings: tabName = "settings"
         }
@@ -329,6 +330,9 @@ extension MainView {
       case .journal:
         JournalView()
           .padding(15)
+      case .logs:
+        RuntimeConsoleView()
+          .padding(15)
       case .bug:
         BugReportView()
           .padding(15)
@@ -501,12 +505,38 @@ extension MainView {
       .opacity(timelineOpacity)
 
       Spacer()
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .overlay(alignment: .trailing) {
+
+      HStack(spacing: 0) {
+        ForEach(TimelineTab.allCases, id: \.self) { tab in
+          Button(action: {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+              selectedTimelineTab = tab
+            }
+          }) {
+            Text(tab.rawValue)
+              .font(Font.custom("Nunito", size: 12).weight(.semibold))
+              .foregroundColor(selectedTimelineTab == tab ? Color(hex: "2E221B") : Color(hex: "9E8880"))
+              .padding(.horizontal, 12)
+              .padding(.vertical, 5)
+              .background(
+                RoundedRectangle(cornerRadius: 6)
+                  .fill(selectedTimelineTab == tab ? Color.white : Color.clear)
+              )
+          }
+          .buttonStyle(.plain)
+        }
+      }
+      .padding(3)
+      .background(
+        RoundedRectangle(cornerRadius: 9)
+          .fill(Color(hex: "EDE3DE").opacity(0.7))
+      )
+      .padding(.trailing, 8)
+
       PausePillView()
         .trackTimelineHeaderFrame(TimelineHeaderTrackedElement.pauseControl)
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.horizontal, 10)
     .coordinateSpace(name: "TimelineHeaderSpace")
     .onPreferenceChange(TimelineHeaderFramesPreferenceKey.self) { frames in
@@ -554,26 +584,36 @@ extension MainView {
 
   private var timelineContent: some View {
     VStack(alignment: .leading, spacing: 12) {
-      TabFilterBar(
-        categories: categoryStore.editableCategories,
-        idleCategory: categoryStore.idleCategory,
-        onManageCategories: { showCategoryEditor = true }
-      )
-      .padding(.leading, 10)
-      .opacity(contentOpacity)
+      if selectedTimelineTab == .cards {
+        TabFilterBar(
+          categories: categoryStore.editableCategories,
+          idleCategory: categoryStore.idleCategory,
+          onManageCategories: { showCategoryEditor = true }
+        )
+        .padding(.leading, 10)
+        .opacity(contentOpacity)
+      }
 
-      CanvasTimelineDataView(
-        selectedDate: $selectedDate,
-        selectedActivity: $selectedActivity,
-        scrollToNowTick: $scrollToNowTick,
-        hasAnyActivities: $hasAnyActivities,
-        refreshTrigger: $refreshActivitiesTrigger,
-        weeklyHoursFrame: weeklyHoursFrame,
-        weeklyHoursIntersectsCard: $weeklyHoursIntersectsCard
-      )
-      .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
-      .environmentObject(categoryStore)
-      .opacity(contentOpacity)
+      if selectedTimelineTab == .cards {
+        CanvasTimelineDataView(
+          selectedDate: $selectedDate,
+          selectedActivity: $selectedActivity,
+          scrollToNowTick: $scrollToNowTick,
+          hasAnyActivities: $hasAnyActivities,
+          refreshTrigger: $refreshActivitiesTrigger,
+          weeklyHoursFrame: weeklyHoursFrame,
+          weeklyHoursIntersectsCard: $weeklyHoursIntersectsCard
+        )
+        .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+        .environmentObject(categoryStore)
+        .opacity(contentOpacity)
+        .transition(.opacity)
+      } else {
+        AppUsageView(date: selectedDate)
+          .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity)
+          .opacity(contentOpacity)
+          .transition(.opacity)
+      }
     }
     .frame(minWidth: 0, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }

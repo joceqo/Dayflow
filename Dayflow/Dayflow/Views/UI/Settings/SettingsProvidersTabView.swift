@@ -168,39 +168,45 @@ struct SettingsProvidersTabView: View {
     }
   }
 
-  private func hasPrimaryAndSecondaryActions(
-    isPrimary: Bool,
-    isSecondary: Bool
-  ) -> Bool {
-    !isPrimary && !isSecondary
-  }
-
   @ViewBuilder
-  private func primaryAndSecondaryActions(
+  private func roleActions(
     provider: CompactProviderInfo,
     isPrimary: Bool,
     isSecondary: Bool,
-    canSetSecondary: Bool
+    isTertiary: Bool,
+    canSetSecondary: Bool,
+    canSetTertiary: Bool
   ) -> some View {
-    if hasPrimaryAndSecondaryActions(isPrimary: isPrimary, isSecondary: isSecondary) {
+    VStack(alignment: .leading, spacing: 8) {
       HStack(spacing: 8) {
-        matrixActionButton("Set primary", filled: true) {
-          viewModel.setPrimaryOrSetup(provider.id)
+        if !isPrimary {
+          matrixActionButton("Set primary", filled: true) {
+            viewModel.setPrimaryOrSetup(provider.id)
+          }
         }
-        matrixActionButton("Set secondary", filled: true, enabled: canSetSecondary) {
-          viewModel.setSecondaryOrSetup(provider.id)
+        if !isSecondary {
+          matrixActionButton("Set secondary", filled: true, enabled: canSetSecondary) {
+            viewModel.setSecondaryOrSetup(provider.id)
+          }
+        }
+        if !isTertiary {
+          matrixActionButton("Set tertiary", filled: true, enabled: canSetTertiary) {
+            viewModel.setTertiaryOrSetup(provider.id)
+          }
         }
       }
-    } else if !isPrimary {
-      HStack(spacing: 8) {
-        matrixActionButton("Set primary", filled: true) {
-          viewModel.setPrimaryOrSetup(provider.id)
-        }
-      }
-    } else if !isSecondary {
-      HStack(spacing: 8) {
-        matrixActionButton("Set secondary", filled: true, enabled: canSetSecondary) {
-          viewModel.setSecondaryOrSetup(provider.id)
+      if isSecondary || isTertiary {
+        HStack(spacing: 8) {
+          if isSecondary {
+            matrixActionButton("Clear secondary", filled: false) {
+              viewModel.clearBackupProvider()
+            }
+          }
+          if isTertiary {
+            matrixActionButton("Clear tertiary", filled: false) {
+              viewModel.clearTertiaryProvider()
+            }
+          }
         }
       }
     }
@@ -211,7 +217,9 @@ struct SettingsProvidersTabView: View {
     let isConfigured = viewModel.isProviderConfigured(provider.id)
     let isPrimary = viewModel.primaryRoutingProviderId == provider.id
     let isSecondary = viewModel.isBackupProvider(provider.id)
+    let isTertiary = viewModel.isTertiaryProvider(provider.id)
     let canSetSecondary = viewModel.canAssignSecondary(provider.id) || !isConfigured
+    let canSetTertiary = viewModel.canAssignTertiary(provider.id) || !isConfigured
 
     VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 10) {
@@ -226,6 +234,8 @@ struct SettingsProvidersTabView: View {
           roleTag(text: "PRIMARY", type: .orange)
         } else if isSecondary {
           roleTag(text: "SECONDARY", type: .blue)
+        } else if isTertiary {
+          roleTag(text: "TERTIARY", type: .purple)
         } else if isConfigured {
           roleTag(text: "CONFIGURED", type: .green)
         } else {
@@ -251,11 +261,13 @@ struct SettingsProvidersTabView: View {
           }
         }
 
-        primaryAndSecondaryActions(
+        roleActions(
           provider: provider,
           isPrimary: isPrimary,
           isSecondary: isSecondary,
-          canSetSecondary: canSetSecondary
+          isTertiary: isTertiary,
+          canSetSecondary: canSetSecondary,
+          canSetTertiary: canSetTertiary
         )
       }
     }
@@ -556,6 +568,16 @@ struct SettingsProvidersTabView: View {
         )
       } else {
         summaryRow(label: "Secondary provider", value: "Not configured")
+      }
+      if let tertiaryProvider = viewModel.tertiaryRoutingProviderId {
+        summaryRoleRow(
+          label: "Tertiary provider",
+          value: viewModel.providerDisplayName(tertiaryProvider),
+          roleText: "TERTIARY",
+          roleType: .purple
+        )
+      } else {
+        summaryRow(label: "Tertiary provider", value: "Not configured")
       }
 
       switch viewModel.currentProvider {

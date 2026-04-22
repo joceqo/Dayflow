@@ -1,5 +1,39 @@
 import SwiftUI
 
+enum TimelineTab: String, CaseIterable {
+  case cards = "Cards"
+  case apps = "Apps"
+}
+
+struct TimelineTabPicker: View {
+  @Binding var selectedTab: TimelineTab
+
+  var body: some View {
+    HStack(spacing: 2) {
+      ForEach(TimelineTab.allCases, id: \.self) { tab in
+        Button(action: { withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) { selectedTab = tab } }) {
+          Text(tab.rawValue)
+            .font(.custom("Nunito-SemiBold", size: 12))
+            .foregroundStyle(selectedTab == tab ? Color(hex: "2E221B") : Color(hex: "9E8880"))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .background(
+              RoundedRectangle(cornerRadius: 6)
+                .fill(selectedTab == tab ? Color.white : Color.clear)
+                .shadow(color: selectedTab == tab ? Color.black.opacity(0.08) : .clear, radius: 3, y: 1)
+            )
+        }
+        .buttonStyle(.plain)
+      }
+    }
+    .padding(3)
+    .background(
+      RoundedRectangle(cornerRadius: 9)
+        .fill(Color(hex: "EDE3DE").opacity(0.6))
+    )
+  }
+}
+
 // MARK: - Cached DateFormatters (creating DateFormatters is expensive due to ICU initialization)
 // These are internal (not private) so they can be shared with DateNavigationControls
 

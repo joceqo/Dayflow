@@ -11,6 +11,8 @@ final class ProvidersSettingsViewModel: ObservableObject {
   }
   @Published var backupProvider: String?
   @Published var backupChatCLITool: CLITool?
+  @Published var tertiaryProvider: String?
+  @Published var tertiaryChatCLITool: CLITool?
   @Published var setupModalProvider: String? {
     didSet {
       if setupModalProvider == nil {
@@ -146,6 +148,7 @@ final class ProvidersSettingsViewModel: ObservableObject {
   func handleOnAppear() {
     loadCurrentProvider()
     loadBackupProvider()
+    loadTertiaryProvider()
     reloadLocalProviderSettings()
     LocalModelPreferences.syncPreset(for: localEngine, modelId: localModelId)
     refreshUpgradeBannerState()
@@ -260,6 +263,8 @@ final class ProvidersSettingsViewModel: ObservableObject {
       currentProvider = "ollama"
     case .chatGPTClaude:
       currentProvider = "chatgpt_claude"
+    case .apfel:
+      currentProvider = "apfel"
     }
     hasLoadedProvider = true
   }
@@ -300,6 +305,35 @@ final class ProvidersSettingsViewModel: ObservableObject {
     }
   }
 
+  func loadTertiaryProvider() {
+    let stored = LLMProviderRoutingPreferences.loadTertiaryProvider()
+    guard let stored, stored != .dayflow else {
+      tertiaryProvider = nil
+      tertiaryChatCLITool = nil
+      LLMProviderRoutingPreferences.saveTertiaryProvider(nil)
+      LLMProviderRoutingPreferences.saveTertiaryChatCLITool(nil)
+      return
+    }
+
+    let raw = stored.rawValue
+    guard raw != currentProvider, raw != backupProvider else {
+      tertiaryProvider = nil
+      tertiaryChatCLITool = nil
+      LLMProviderRoutingPreferences.saveTertiaryProvider(nil)
+      LLMProviderRoutingPreferences.saveTertiaryChatCLITool(nil)
+      return
+    }
+
+    tertiaryProvider = raw
+    if stored == .chatGPTClaude {
+      let tool = LLMProviderRoutingPreferences.loadTertiaryChatCLITool()
+      tertiaryChatCLITool = tool.flatMap { CLITool(rawValue: $0.rawValue) } ?? preferredCLITool
+    } else {
+      tertiaryChatCLITool = nil
+      LLMProviderRoutingPreferences.saveTertiaryChatCLITool(nil)
+    }
+  }
+
   var routingProviders: [CompactProviderInfo] {
     providerCatalog
   }
@@ -336,6 +370,8 @@ final class ProvidersSettingsViewModel: ObservableObject {
       assignPrimaryProvider(displayProviderId)
     case .secondary:
       assignSecondaryProvider(displayProviderId)
+    case .tertiary:
+      assignTertiaryProvider(displayProviderId)
     case .setupOnly:
       break
     }
@@ -357,6 +393,14 @@ final class ProvidersSettingsViewModel: ObservableObject {
     }
   }
 
+  func setTertiaryOrSetup(_ providerId: String) {
+    if isProviderConfigured(providerId) {
+      assignTertiaryProvider(providerId)
+    } else {
+      beginProviderSetup(providerId, role: .tertiary)
+    }
+  }
+
   var primaryRoutingProviderId: String {
     displayProviderId(canonicalProviderId: currentProvider, preferredTool: preferredCLITool)
   }
@@ -366,6 +410,14 @@ final class ProvidersSettingsViewModel: ObservableObject {
     return displayProviderId(
       canonicalProviderId: backupProvider,
       preferredTool: backupChatCLITool ?? preferredCLITool
+    )
+  }
+
+  var tertiaryRoutingProviderId: String? {
+    guard let tertiaryProvider else { return nil }
+    return displayProviderId(
+      canonicalProviderId: tertiaryProvider,
+      preferredTool: tertiaryChatCLITool ?? preferredCLITool
     )
   }
 
@@ -446,6 +498,41 @@ final class ProvidersSettingsViewModel: ObservableObject {
     return true
   }
 
+  func assignTertiaryProvider(_ providerId: String) {
+    guard canAssignTertiary(providerId) else { return }
+    persistTertiarySelection(displayProviderId: providerId, emitAnalytics: true)
+    AnalyticsService.shared.capture(
+      "provider_tertiary_updated",
+      [
+        "tertiary_provider": providerId,
+        "underlying_provider": canonicalProviderId(for: providerId),
+        "mode": "set",
+      ])
+  }
+
+  func canAssignTertiary(_ providerId: String) -> Bool {
+    guard isProviderConfigured(providerId) else { return false }
+
+    let targetCanonical = canonicalProviderId(for: providerId)
+    let primaryCanonical = canonicalProviderId(for: primaryRoutingProviderId)
+    if targetCanonical == primaryCanonical { return false }
+
+    if let secondaryId = secondaryRoutingProviderId {
+      let secondaryCanonical = canonicalProviderId(for: secondaryId)
+      if targetCanonical == secondaryCanonical { return false }
+    }
+
+    return true
+  }
+
+  func clearTertiaryProvider() {
+    persistTertiarySelection(displayProviderId: nil, emitAnalytics: true)
+  }
+
+  func isTertiaryProvider(_ providerId: String) -> Bool {
+    tertiaryRoutingProviderId == providerId
+  }
+
   func isProviderConfigured(_ providerId: String) -> Bool {
     if providerId == primaryRoutingProviderId {
       return true
@@ -473,6 +560,8 @@ final class ProvidersSettingsViewModel: ObservableObject {
       let preferredTool = (UserDefaults.standard.string(forKey: "chatCLIPreferredTool") ?? "")
         .trimmingCharacters(in: .whitespacesAndNewlines)
       return !preferredTool.isEmpty
+    case "apfel":
+      return ApfelLanguageModel.availability.isAvailable
     default:
       return false
     }
@@ -505,9 +594,11 @@ final class ProvidersSettingsViewModel: ObservableObject {
   }
 
   private func ensureBackupProviderIsValid(primaryProvider: String) {
-    guard let backupProvider else { return }
-    if backupProvider == primaryProvider {
+    if let backupProvider, backupProvider == primaryProvider {
       persistBackupSelection(displayProviderId: nil, emitAnalytics: false)
+    }
+    if let tertiaryProvider, tertiaryProvider == primaryProvider {
+      persistTertiarySelection(displayProviderId: nil, emitAnalytics: false)
     }
   }
 
@@ -524,6 +615,8 @@ final class ProvidersSettingsViewModel: ObservableObject {
       providerType = .dayflowBackend()
     case "chatgpt_claude":
       providerType = .chatGPTClaude
+    case "apfel":
+      providerType = .apfel
     default:
       return
     }
@@ -588,6 +681,40 @@ final class ProvidersSettingsViewModel: ObservableObject {
           "primary_provider": currentProvider,
         ])
     }
+  }
+
+  private func persistTertiarySelection(displayProviderId: String?, emitAnalytics: Bool) {
+    guard let displayProviderId, !displayProviderId.isEmpty else {
+      tertiaryProvider = nil
+      tertiaryChatCLITool = nil
+      LLMProviderRoutingPreferences.saveTertiaryProvider(nil)
+      LLMProviderRoutingPreferences.saveTertiaryChatCLITool(nil)
+      if emitAnalytics {
+        AnalyticsService.shared.capture(
+          "provider_tertiary_updated",
+          [
+            "tertiary_provider": "none",
+            "primary_provider": currentProvider,
+          ])
+      }
+      return
+    }
+
+    let providerId = canonicalProviderId(for: displayProviderId)
+    guard providerId != currentProvider,
+      providerId != backupProvider,
+      let provider = LLMProviderID(rawValue: providerId),
+      provider != .dayflow
+    else {
+      return
+    }
+
+    let tertiaryTool = chatTool(for: displayProviderId) ?? preferredCLITool
+    tertiaryProvider = providerId
+    tertiaryChatCLITool = tertiaryTool
+    LLMProviderRoutingPreferences.saveTertiaryProvider(provider)
+    let routingTool = tertiaryTool.flatMap { ChatCLITool(rawValue: $0.rawValue) }
+    LLMProviderRoutingPreferences.saveTertiaryChatCLITool(routingTool)
   }
 
   private func recordProviderSetupCompleted(_ providerId: String) {
@@ -658,7 +785,25 @@ final class ProvidersSettingsViewModel: ObservableObject {
         badgeType: .blue,
         icon: "ClaudeLogo"
       ),
+      CompactProviderInfo(
+        id: "apfel",
+        title: "Apple Intelligence",
+        summary: apfelCatalogSummary,
+        badgeText: "ON-DEVICE",
+        badgeType: .green,
+        icon: "apple.logo"
+      ),
     ]
+  }
+
+  private var apfelCatalogSummary: String {
+    let availability = ApfelLanguageModel.availability
+    switch availability {
+    case .available:
+      return "Vision OCR + Apple Intelligence • fully offline"
+    default:
+      return "Unavailable • \(availability.userFacingReason)"
+    }
   }
 
   func statusText(for providerId: String) -> String? {
@@ -687,6 +832,8 @@ final class ProvidersSettingsViewModel: ObservableObject {
         return "Claude Code CLI"
       }
       return chatCLIStatusLabel()
+    case "apfel":
+      return ApfelLanguageModel.availability.userFacingReason
     default:
       return nil
     }
@@ -715,6 +862,8 @@ final class ProvidersSettingsViewModel: ObservableObject {
         return "\(tool.shortName) CLI"
       }
       return "ChatGPT / Claude CLI"
+    case "apfel":
+      return "Apple Intelligence"
     default:
       return "Diagnostics"
     }
@@ -732,6 +881,7 @@ final class ProvidersSettingsViewModel: ObservableObject {
       }
       return "ChatGPT or Claude"
     case "dayflow": return "Dayflow Pro"
+    case "apfel": return "Apple Intelligence"
     default: return id.capitalized
     }
   }
@@ -956,5 +1106,6 @@ struct CompactProviderInfo: Identifiable {
 enum ProviderRoutingRole {
   case primary
   case secondary
+  case tertiary
   case setupOnly
 }

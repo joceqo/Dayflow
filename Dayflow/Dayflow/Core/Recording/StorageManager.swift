@@ -70,6 +70,7 @@ protocol StorageManaging: Sendable {
   func deleteTimelineCard(recordId: Int64) -> String?
   func fetchTimelineCards(forBatch batchId: Int64) -> [TimelineCard]
   func fetchTimelineCard(byId id: Int64) -> TimelineCardWithTimestamps?
+  func batchIdForTimelineCard(_ cardId: Int64) -> Int64?
   func fetchLastTimelineCard(endingBefore: Date) -> TimelineCardWithTimestamps?
 
   // Timeline Queries
@@ -123,7 +124,11 @@ protocol StorageManaging: Sendable {
   func nextScreenshotURL() -> URL
 
   /// Save a screenshot to the database, returns the screenshot ID
-  func saveScreenshot(url: URL, capturedAt: Date, idleSecondsAtCapture: Int?) -> Int64?
+  func saveScreenshot(
+    url: URL, capturedAt: Date, idleSecondsAtCapture: Int?,
+    activeAppName: String?, activeAppBundle: String?,
+    activeURL: String?, activeWindowTitle: String?
+  ) -> Int64?
 
   /// Fetch screenshots that haven't been assigned to a batch yet
   func fetchUnprocessedScreenshots(since oldestTimestamp: Int) -> [Screenshot]
@@ -136,6 +141,34 @@ protocol StorageManaging: Sendable {
 
   /// Fetch screenshots within a time range (for timelapse generation)
   func fetchScreenshotsInTimeRange(startTs: Int, endTs: Int) -> [Screenshot]
+
+  // MARK: - Continuous App Activity Tracking
+
+  /// Open a new app activity segment; returns its id.
+  func openAppActivitySegment(startTs: Int, bundleId: String?, appName: String?) -> Int64?
+
+  /// Close a specific segment with the given end timestamp.
+  func closeAppActivitySegment(id: Int64, endTs: Int)
+
+  /// Close any still-open (end_ts IS NULL) segments, capping at start_ts + cap seconds.
+  /// Called at app launch to clean up orphans from previous crashed/force-quit sessions.
+  func closeOrphanAppActivitySegments(capSeconds: Int)
+
+  /// Heartbeat: set a segment's end_ts to `now` without closing it (keeps it "live").
+  /// If the app crashes, the last heartbeat timestamp becomes the end.
+  func touchAppActivitySegment(id: Int64, nowTs: Int)
+
+  /// Fetch raw activity segments overlapping the time range. Open segments get end_ts = now.
+  func fetchAppActivitySegments(startTs: Int, endTs: Int) -> [AppActivitySegment]
+}
+
+/// A single app-activation segment used to render the timeline strip.
+struct AppActivitySegment: Identifiable, Sendable {
+  let id: Int64
+  let startTs: Int
+  let endTs: Int
+  let bundleId: String?
+  let appName: String
 }
 
 // Journal entry for daily intentions, reflections, and AI summaries
@@ -254,6 +287,7 @@ struct TimelineCard: Codable, Sendable, Identifiable {
   let otherVideoSummaryURLs: [String]?  // For merged cards, subsequent video URLs
   let appSites: AppSites?
   let isBackupGenerated: Bool?
+  let llmLabel: String?
 
   init(
     id: UUID = UUID(),
@@ -271,7 +305,8 @@ struct TimelineCard: Codable, Sendable, Identifiable {
     videoSummaryURL: String?,
     otherVideoSummaryURLs: [String]?,
     appSites: AppSites?,
-    isBackupGenerated: Bool? = nil
+    isBackupGenerated: Bool? = nil,
+    llmLabel: String? = nil
   ) {
     self.id = id
     self.recordId = recordId
@@ -289,6 +324,7 @@ struct TimelineCard: Codable, Sendable, Identifiable {
     self.otherVideoSummaryURLs = otherVideoSummaryURLs
     self.appSites = appSites
     self.isBackupGenerated = isBackupGenerated
+    self.llmLabel = llmLabel
   }
 }
 
@@ -373,6 +409,7 @@ struct TimelineCardShell: Sendable {
   let appSites: AppSites?
   let isBackupGenerated: Bool?
   let idleMetadata: IdleCardMetadata?
+  let llmLabel: String?
   // No videoSummaryURL here, as it's added later
   // No batchId here, as it's passed as a separate parameter to the save function
 
@@ -387,7 +424,8 @@ struct TimelineCardShell: Sendable {
     distractions: [Distraction]?,
     appSites: AppSites?,
     isBackupGenerated: Bool? = nil,
-    idleMetadata: IdleCardMetadata? = nil
+    idleMetadata: IdleCardMetadata? = nil,
+    llmLabel: String? = nil
   ) {
     self.startTimestamp = startTimestamp
     self.endTimestamp = endTimestamp
@@ -400,6 +438,7 @@ struct TimelineCardShell: Sendable {
     self.appSites = appSites
     self.isBackupGenerated = isBackupGenerated
     self.idleMetadata = idleMetadata
+    self.llmLabel = llmLabel
   }
 }
 
@@ -1083,6 +1122,11 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
         print("✅ Added is_deleted column and composite indexes to timeline_cards")
       }
 
+      if !timelineCardsColumns.contains("llm_label") {
+        try db.execute(sql: "ALTER TABLE timeline_cards ADD COLUMN llm_label TEXT;")
+        print("✅ Added llm_label column to timeline_cards")
+      }
+
       let screenshotColumns = try db.columns(in: "screenshots").map { $0.name }
       if !screenshotColumns.contains("idle_seconds_at_capture") {
         try db.execute(
@@ -1090,6 +1134,43 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
                 ALTER TABLE screenshots ADD COLUMN idle_seconds_at_capture INTEGER;
             """)
         print("✅ Added idle_seconds_at_capture column to screenshots")
+      }
+      if !screenshotColumns.contains("active_app_name") {
+        try db.execute(sql: "ALTER TABLE screenshots ADD COLUMN active_app_name TEXT;")
+        print("✅ Added active_app_name column to screenshots")
+      }
+      if !screenshotColumns.contains("active_app_bundle") {
+        try db.execute(sql: "ALTER TABLE screenshots ADD COLUMN active_app_bundle TEXT;")
+        print("✅ Added active_app_bundle column to screenshots")
+      }
+      if !screenshotColumns.contains("active_url") {
+        try db.execute(sql: "ALTER TABLE screenshots ADD COLUMN active_url TEXT;")
+        print("✅ Added active_url column to screenshots")
+      }
+      if !screenshotColumns.contains("active_window_title") {
+        try db.execute(sql: "ALTER TABLE screenshots ADD COLUMN active_window_title TEXT;")
+        print("✅ Added active_window_title column to screenshots")
+      }
+
+      // Continuous app activity segments (one row per app activation)
+      try db.execute(
+        sql: """
+              CREATE TABLE IF NOT EXISTS app_activity (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  start_ts INTEGER NOT NULL,
+                  end_ts INTEGER,
+                  last_heartbeat_ts INTEGER,
+                  bundle_id TEXT,
+                  app_name TEXT
+              );
+              CREATE INDEX IF NOT EXISTS idx_app_activity_start_ts ON app_activity(start_ts);
+              CREATE INDEX IF NOT EXISTS idx_app_activity_end_ts ON app_activity(end_ts);
+          """)
+      let activityColumns = try db.columns(in: "app_activity").map { $0.name }
+      if !activityColumns.contains("last_heartbeat_ts") {
+        try db.execute(
+          sql: "ALTER TABLE app_activity ADD COLUMN last_heartbeat_ts INTEGER;")
+        print("✅ Added last_heartbeat_ts column to app_activity")
       }
     }
   }
@@ -1293,7 +1374,15 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
     return root.appendingPathComponent("\(df.string(from: Date())).jpg")
   }
 
-  func saveScreenshot(url: URL, capturedAt: Date, idleSecondsAtCapture: Int?) -> Int64? {
+  func saveScreenshot(
+    url: URL,
+    capturedAt: Date,
+    idleSecondsAtCapture: Int?,
+    activeAppName: String? = nil,
+    activeAppBundle: String? = nil,
+    activeURL: String? = nil,
+    activeWindowTitle: String? = nil
+  ) -> Int64? {
     let timestamp = Int(capturedAt.timeIntervalSince1970)
     let path = url.path
     let fileSize: Int64? = {
@@ -1309,9 +1398,14 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
     try? timedWrite("saveScreenshot") { db in
       try db.execute(
         sql: """
-              INSERT INTO screenshots(captured_at, file_path, file_size, idle_seconds_at_capture)
-              VALUES (?, ?, ?, ?)
-          """, arguments: [timestamp, path, fileSize, idleSecondsAtCapture])
+              INSERT INTO screenshots(captured_at, file_path, file_size, idle_seconds_at_capture, active_app_name, active_app_bundle, active_url, active_window_title)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          """,
+        arguments: [
+          timestamp, path, fileSize, idleSecondsAtCapture, activeAppName, activeAppBundle,
+          activeURL, activeWindowTitle,
+        ]
+      )
       screenshotId = db.lastInsertedRowID
     }
     return screenshotId
@@ -1324,7 +1418,11 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
       filePath: row["file_path"],
       fileSize: row["file_size"],
       idleSecondsAtCapture: row["idle_seconds_at_capture"],
-      isDeleted: (row["is_deleted"] as? Int ?? 0) != 0
+      isDeleted: (row["is_deleted"] as? Int ?? 0) != 0,
+      activeAppName: row["active_app_name"],
+      activeAppBundle: row["active_app_bundle"],
+      activeURL: row["active_url"],
+      activeWindowTitle: row["active_window_title"]
     )
   }
 
@@ -1381,6 +1479,260 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
       )
       .map(screenshot(from:))
     }) ?? []
+  }
+
+  // MARK: - Continuous App Activity Tracking
+
+  func openAppActivitySegment(startTs: Int, bundleId: String?, appName: String?) -> Int64? {
+    var newId: Int64?
+    try? timedWrite("openAppActivitySegment") { db in
+      try db.execute(
+        sql: """
+              INSERT INTO app_activity(start_ts, last_heartbeat_ts, bundle_id, app_name)
+              VALUES (?, ?, ?, ?)
+          """,
+        arguments: [startTs, startTs, bundleId, appName]
+      )
+      newId = db.lastInsertedRowID
+    }
+    return newId
+  }
+
+  func closeAppActivitySegment(id: Int64, endTs: Int) {
+    try? timedWrite("closeAppActivitySegment") { db in
+      try db.execute(
+        sql:
+          "UPDATE app_activity SET end_ts = ?, last_heartbeat_ts = ? WHERE id = ? AND end_ts IS NULL",
+        arguments: [endTs, endTs, id]
+      )
+    }
+  }
+
+  func touchAppActivitySegment(id: Int64, nowTs: Int) {
+    try? timedWrite("touchAppActivitySegment") { db in
+      try db.execute(
+        sql: "UPDATE app_activity SET last_heartbeat_ts = ? WHERE id = ? AND end_ts IS NULL",
+        arguments: [nowTs, id]
+      )
+    }
+  }
+
+  func closeOrphanAppActivitySegments(capSeconds: Int) {
+    // Cap any still-open segment at its last heartbeat (precise) — fallback to start_ts + cap
+    // if for some reason last_heartbeat_ts is missing.
+    try? timedWrite("closeOrphanAppActivitySegments") { db in
+      try db.execute(
+        sql: """
+              UPDATE app_activity
+              SET end_ts = COALESCE(last_heartbeat_ts, start_ts + ?)
+              WHERE end_ts IS NULL
+          """,
+        arguments: [capSeconds]
+      )
+    }
+  }
+
+  func fetchAppActivitySegments(startTs: Int, endTs: Int) -> [AppActivitySegment] {
+    let nowTs = Int(Date().timeIntervalSince1970)
+    return (try? timedRead("fetchAppActivitySegments") { db in
+      try Row.fetchAll(
+        db,
+        sql: """
+              SELECT id, start_ts,
+                     COALESCE(end_ts, last_heartbeat_ts, ?) AS end_ts,
+                     bundle_id, app_name
+              FROM app_activity
+              WHERE start_ts < ?
+                AND (end_ts IS NULL OR end_ts > ?)
+              ORDER BY start_ts ASC
+          """,
+        arguments: [nowTs, endTs, startTs]
+      ).map { row in
+        AppActivitySegment(
+          id: row["id"] ?? 0,
+          startTs: row["start_ts"] ?? 0,
+          endTs: row["end_ts"] ?? 0,
+          bundleId: row["bundle_id"],
+          appName: (row["app_name"] as? String) ?? "Unknown"
+        )
+      }
+    }) ?? []
+  }
+
+  func appUsageForDay(_ date: Date) -> [AppUsageSample] {
+    let cal = Calendar.current
+    let start = cal.startOfDay(for: date)
+    // Use 4AM boundary: window is midnight → 4AM next day (28 hours)
+    let end = cal.date(byAdding: .hour, value: 28, to: start) ?? date
+    let startTs = Int(start.timeIntervalSince1970)
+    let endTs = Int(end.timeIntervalSince1970)
+    let nowTs = Int(Date().timeIntervalSince1970)
+
+    // --- 1. Continuous activity segments (primary: tracks every app switch) ---
+    let activitySegments = (try? timedRead("appUsageForDay.activity") { db in
+      try Row.fetchAll(
+        db,
+        sql: """
+              SELECT start_ts,
+                     COALESCE(end_ts, last_heartbeat_ts, ?) AS end_ts,
+                     bundle_id, app_name
+              FROM app_activity
+              WHERE start_ts < ?
+                AND (end_ts IS NULL OR end_ts > ?)
+          """,
+        arguments: [nowTs, endTs, startTs]
+      )
+    }) ?? []
+
+    // bundle → (displayName, seconds)
+    var activityByBundle: [String: (name: String, seconds: Double)] = [:]
+    for row in activitySegments {
+      let segStart: Int = row["start_ts"] ?? 0
+      let segEnd: Int = row["end_ts"] ?? segStart
+      let clampedStart = max(segStart, startTs)
+      let clampedEnd = min(segEnd, endTs)
+      let secs = Double(clampedEnd - clampedStart)
+      guard secs > 0 else { continue }
+
+      let appName: String = row["app_name"] ?? "Unknown"
+      let bundleRaw: String? = row["bundle_id"]
+      let bundle = bundleRaw ?? appName
+      activityByBundle[bundle, default: (appName, 0)].seconds += secs
+    }
+
+    // --- Screenshot-based aggregation (precise, but only available after feature landed) ---
+    let shots = (try? timedRead("appUsageForDay.screenshots") { db in
+      try Row.fetchAll(
+        db,
+        sql: """
+              SELECT captured_at, active_app_name, active_app_bundle, active_url
+              FROM screenshots
+              WHERE captured_at >= ? AND captured_at <= ?
+                AND is_deleted = 0
+                AND active_app_name IS NOT NULL
+              ORDER BY captured_at ASC
+          """, arguments: [startTs, endTs]
+      )
+    }) ?? []
+
+    let maxGap: Double = 3 * 60
+    // bundle → (displayName, seconds)
+    var durationByBundle: [String: (name: String, seconds: Double)] = [:]
+    // bundle → domain → seconds
+    var urlDurationByBundle: [String: [String: Double]] = [:]
+
+    for i in 0..<shots.count {
+      let row = shots[i]
+      guard let appName = row["active_app_name"] as? String else { continue }
+      let bundle = row["active_app_bundle"] as? String ?? appName
+      let ts = row["captured_at"] as? Int ?? 0
+
+      let interval: Double
+      if i + 1 < shots.count {
+        let nextTs = shots[i + 1]["captured_at"] as? Int ?? ts
+        interval = min(Double(nextTs - ts), maxGap)
+      } else {
+        interval = 30
+      }
+      guard interval > 0 else { continue }
+      durationByBundle[bundle, default: (appName, 0)].seconds += interval
+
+      if let urlString = row["active_url"] as? String,
+        let domain = BrowserURLReader.domain(from: urlString)
+      {
+        urlDurationByBundle[bundle, default: [:]][domain, default: 0] += interval
+      }
+    }
+
+    // --- Card-based aggregation (covers all historical cards via LLM appSites) ---
+    // Only used for apps not already tracked by screenshots.
+    let cards = (try? timedRead("appUsageForDay.cards") { db in
+      try Row.fetchAll(
+        db,
+        sql: """
+              SELECT start_ts, end_ts, metadata FROM timeline_cards
+              WHERE start_ts >= ? AND start_ts < ?
+                AND is_deleted = 0
+                AND category != 'Idle'
+                AND category != 'System'
+          """, arguments: [startTs, endTs]
+      )
+    }) ?? []
+
+    let decoder = JSONDecoder()
+    // appName (lowercased) → (displayName, seconds) — for card-sourced apps only
+    var cardDurationByName: [String: (name: String, seconds: Double)] = [:]
+
+    // Union of bundles covered by precise sources (activity + screenshots)
+    let preciseBundles = Set(activityByBundle.keys).union(durationByBundle.keys)
+    let preciseAppNames = Set(
+      activityByBundle.values.map { $0.name.lowercased() }
+        + durationByBundle.values.map { $0.name.lowercased() })
+
+    for row in cards {
+      guard let metaStr = row["metadata"] as? String,
+        let metaData = metaStr.data(using: .utf8),
+        let meta = try? decoder.decode(TimelineMetadata.self, from: metaData)
+      else { continue }
+
+      let cardStart = row["start_ts"] as? Int ?? 0
+      let cardEnd = row["end_ts"] as? Int ?? 0
+      let cardDuration = max(0, Double(cardEnd - cardStart))
+      guard cardDuration > 0 else { continue }
+
+      var apps: [(name: String, weight: Double)] = []
+      // LLMs sometimes emit domain-like strings ("xcode.com") as app names — skip those
+      let looksLikeDomain: (String) -> Bool = { $0.contains(".") || $0.contains("://") }
+      if let p = meta.appSites?.primary, !p.isEmpty, !looksLikeDomain(p) {
+        apps.append((p, 0.65))
+      }
+      if let s = meta.appSites?.secondary, !s.isEmpty, !looksLikeDomain(s) {
+        apps.append((s, 0.35))
+      }
+      guard !apps.isEmpty else { continue }
+
+      // Skip if all apps for this card are already covered by precise sources
+      let allCovered = apps.allSatisfy { app in
+        preciseBundles.contains(app.name) || preciseAppNames.contains(app.name.lowercased())
+      }
+      if allCovered { continue }
+
+      for app in apps {
+        let key = app.name.lowercased()
+        cardDurationByName[key, default: (app.name, 0)].seconds += cardDuration * app.weight
+      }
+    }
+
+    // Merge: prefer activity data (precise per-switch), then screenshot data, then cards.
+    // Track final durations by bundle (or app name for card-only entries).
+    var mergedByBundle: [String: (name: String, seconds: Double)] = activityByBundle
+    for (bundle, value) in durationByBundle where mergedByBundle[bundle] == nil {
+      mergedByBundle[bundle] = value
+    }
+
+    var result = mergedByBundle.map { key, value in
+      let topSites =
+        (urlDurationByBundle[key] ?? [:])
+        .map { (domain: $0.key, duration: $0.value) }
+        .sorted { $0.duration > $1.duration }
+        .prefix(5)
+        .map { $0 }
+      return AppUsageSample(
+        appName: value.name,
+        bundleIdentifier: key == value.name ? nil : key,
+        duration: value.seconds,
+        topSites: topSites
+      )
+    }
+
+    let mergedNames = Set(mergedByBundle.values.map { $0.name.lowercased() })
+    for (_, value) in cardDurationByName {
+      guard !mergedNames.contains(value.name.lowercased()) else { continue }
+      result.append(
+        AppUsageSample(appName: value.name, bundleIdentifier: nil, duration: value.seconds))
+    }
+
+    return result.isEmpty ? [] : result.sorted { $0.duration > $1.duration }
   }
 
   func fetchScreenshotsInTimeRange(startTs: Int, endTs: Int) -> [Screenshot] {
@@ -1492,14 +1844,15 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
         sql: """
               INSERT INTO timeline_cards(
                   batch_id, start, end, start_ts, end_ts, day, title,
-                  summary, category, subcategory, detailed_summary, metadata
+                  summary, category, subcategory, detailed_summary, metadata, llm_label
                   -- video_summary_url is omitted here
               )
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
         arguments: [
           batchId, card.startTimestamp, card.endTimestamp, startTs, endTs, dayString, card.title,
           card.summary, card.category, card.subcategory, card.detailedSummary, metadataString,
+          card.llmLabel,
         ])
       lastId = db.lastInsertedRowID
     }
@@ -1967,7 +2320,8 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
             videoSummaryURL: row["video_summary_url"],
             otherVideoSummaryURLs: nil,
             appSites: appSites,
-            isBackupGenerated: isBackupGenerated
+            isBackupGenerated: isBackupGenerated,
+            llmLabel: row["llm_label"]
           )
         }
       }) ?? []
@@ -2082,7 +2436,8 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
           videoSummaryURL: row["video_summary_url"],
           otherVideoSummaryURLs: nil,
           appSites: appSites,
-          isBackupGenerated: isBackupGenerated
+          isBackupGenerated: isBackupGenerated,
+          llmLabel: row["llm_label"]
         )
       }
     }
@@ -2139,7 +2494,8 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
           videoSummaryURL: row["video_summary_url"],
           otherVideoSummaryURLs: nil,
           appSites: appSites,
-          isBackupGenerated: isBackupGenerated
+          isBackupGenerated: isBackupGenerated,
+          llmLabel: row["llm_label"]
         )
       }
     }
@@ -2297,6 +2653,16 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
           )
         }
       }) ?? []
+  }
+
+  func batchIdForTimelineCard(_ cardId: Int64) -> Int64? {
+    try? timedRead("batchIdForTimelineCard") { db in
+      try Int64.fetchOne(
+        db,
+        sql: "SELECT batch_id FROM timeline_cards WHERE id = ? AND is_deleted = 0",
+        arguments: [cardId]
+      )
+    } ?? nil
   }
 
   /// Fetch a specific timeline card by ID including timestamp fields
@@ -2536,13 +2902,14 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
           sql: """
                 INSERT INTO timeline_cards(
                     batch_id, start, end, start_ts, end_ts, day, title,
-                    summary, category, subcategory, detailed_summary, metadata
+                    summary, category, subcategory, detailed_summary, metadata, llm_label
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
           arguments: [
             batchId, card.startTimestamp, card.endTimestamp, startTs, endTs, dayString, card.title,
             card.summary, card.category, card.subcategory, card.detailedSummary, metadataString,
+            card.llmLabel,
           ])
 
         // Capture the ID of the inserted card

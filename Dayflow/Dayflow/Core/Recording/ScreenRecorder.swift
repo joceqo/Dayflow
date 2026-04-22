@@ -334,13 +334,21 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
       return
     }
 
-    let frontBundleId: String? = await MainActor.run {
-      NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+    let (frontBundleId, frontAppName, frontPid): (String?, String?, pid_t?) = await MainActor.run {
+      let app = NSWorkspace.shared.frontmostApplication
+      return (app?.bundleIdentifier, app?.localizedName, app?.processIdentifier)
     }
     if let bundleId = frontBundleId, IgnoredAppsPreferences.contains(bundleId: bundleId) {
       dbg("Screenshot skipped - frontmost app \(bundleId) is in ignored list")
       return
     }
+
+    // Read URL and window title via Accessibility API (no-op if permission not granted)
+    let (activeURL, activeWindowTitle): (String?, String?) = {
+      guard let pid = frontPid else { return (nil, nil) }
+      let result = BrowserURLReader.read(pid: pid)
+      return (result.url, result.windowTitle)
+    }()
 
     let captureTime = Date()
     let idleSecondsAtCapture = InputIdleSnapshot.currentIdleSeconds()
@@ -383,7 +391,11 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
       _ = StorageManager.shared.saveScreenshot(
         url: fileURL,
         capturedAt: captureTime,
-        idleSecondsAtCapture: idleSecondsAtCapture
+        idleSecondsAtCapture: idleSecondsAtCapture,
+        activeAppName: frontAppName,
+        activeAppBundle: frontBundleId,
+        activeURL: activeURL,
+        activeWindowTitle: activeWindowTitle
       )
 
       dbg("📸 Screenshot saved: \(fileURL.lastPathComponent) (\(jpegData.count / 1024)KB)")
