@@ -128,7 +128,7 @@ extension MainView {
       }
       .onReceive(NotificationCenter.default.publisher(for: .navigateToJournal)) { _ in
         withAnimation(.spring(response: 0.35, dampingFraction: 0.9)) {
-          selectedIcon = .weekly
+          selectedIcon = .journal
         }
       }
       .onReceive(NotificationCenter.default.publisher(for: .showTimelineFailureToast)) {

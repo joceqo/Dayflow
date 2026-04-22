@@ -28,6 +28,10 @@ struct Screenshot: Codable, Sendable {
   let fileSize: Int64?
   let idleSecondsAtCapture: Int?
   let isDeleted: Bool
+  let activeAppName: String?
+  let activeAppBundle: String?
+  let activeURL: String?
+  let activeWindowTitle: String?
 
   var fileURL: URL {
     URL(fileURLWithPath: filePath)
@@ -36,4 +40,20 @@ struct Screenshot: Codable, Sendable {
   var capturedDate: Date {
     Date(timeIntervalSince1970: TimeInterval(capturedAt))
   }
+}
+
+struct AppActivitySegment: Identifiable, Sendable {
+  let id: Int64
+  let startTs: Int
+  let endTs: Int
+  let bundleId: String?
+  let appName: String
+}
+
+struct AppUsageSample: Identifiable {
+  let id = UUID()
+  let appName: String
+  let bundleIdentifier: String?
+  let duration: TimeInterval
+  var topSites: [(domain: String, duration: TimeInterval)] = []
 }

@@ -85,7 +85,15 @@ protocol StorageManaging: Sendable {
   func nextScreenshotURL() -> URL
 
   /// Save a screenshot to the database, returns the screenshot ID
-  func saveScreenshot(url: URL, capturedAt: Date, idleSecondsAtCapture: Int?) -> Int64?
+  func saveScreenshot(
+    url: URL,
+    capturedAt: Date,
+    idleSecondsAtCapture: Int?,
+    activeAppName: String?,
+    activeAppBundle: String?,
+    activeURL: String?,
+    activeWindowTitle: String?
+  ) -> Int64?
 
   /// Fetch screenshots that haven't been assigned to a batch yet
   func fetchUnprocessedScreenshots(since oldestTimestamp: Int) -> [Screenshot]
@@ -98,4 +106,13 @@ protocol StorageManaging: Sendable {
 
   /// Fetch screenshots within a time range (for timelapse generation)
   func fetchScreenshotsInTimeRange(startTs: Int, endTs: Int) -> [Screenshot]
+
+  // MARK: - Continuous App Activity Tracking
+
+  func openAppActivitySegment(startTs: Int, bundleId: String?, appName: String?) -> Int64?
+  func closeAppActivitySegment(id: Int64, endTs: Int)
+  func touchAppActivitySegment(id: Int64, nowTs: Int)
+  func closeOrphanAppActivitySegments(capSeconds: Int)
+  func fetchAppActivitySegments(startTs: Int, endTs: Int) -> [AppActivitySegment]
+  func appUsageForDay(_ date: Date) -> [AppUsageSample]
 }

@@ -662,6 +662,42 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
             """)
         print("✅ Added idle_seconds_at_capture column to screenshots")
       }
+      if !screenshotColumns.contains("active_app_name") {
+        try db.execute(sql: "ALTER TABLE screenshots ADD COLUMN active_app_name TEXT;")
+        print("✅ Added active_app_name column to screenshots")
+      }
+      if !screenshotColumns.contains("active_app_bundle") {
+        try db.execute(sql: "ALTER TABLE screenshots ADD COLUMN active_app_bundle TEXT;")
+        print("✅ Added active_app_bundle column to screenshots")
+      }
+      if !screenshotColumns.contains("active_url") {
+        try db.execute(sql: "ALTER TABLE screenshots ADD COLUMN active_url TEXT;")
+        print("✅ Added active_url column to screenshots")
+      }
+      if !screenshotColumns.contains("active_window_title") {
+        try db.execute(sql: "ALTER TABLE screenshots ADD COLUMN active_window_title TEXT;")
+        print("✅ Added active_window_title column to screenshots")
+      }
+
+      // Continuous app activity segments (one row per app activation)
+      try db.execute(
+        sql: """
+              CREATE TABLE IF NOT EXISTS app_activity (
+                  id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  start_ts INTEGER NOT NULL,
+                  end_ts INTEGER,
+                  last_heartbeat_ts INTEGER,
+                  bundle_id TEXT,
+                  app_name TEXT
+              );
+              CREATE INDEX IF NOT EXISTS idx_app_activity_start_ts ON app_activity(start_ts);
+              CREATE INDEX IF NOT EXISTS idx_app_activity_end_ts ON app_activity(end_ts);
+          """)
+      let activityColumns = try db.columns(in: "app_activity").map { $0.name }
+      if !activityColumns.contains("last_heartbeat_ts") {
+        try db.execute(sql: "ALTER TABLE app_activity ADD COLUMN last_heartbeat_ts INTEGER;")
+        print("✅ Added last_heartbeat_ts column to app_activity")
+      }
     }
   }
 

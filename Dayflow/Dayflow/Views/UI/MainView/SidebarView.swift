@@ -74,9 +74,7 @@ struct SidebarView: View {
   @ObservedObject private var badgeManager = NotificationBadgeManager.shared
 
   private var visibleIcons: [SidebarIcon] {
-    SidebarIcon.allCases.filter { icon in
-      icon != .journal
-    }
+    SidebarIcon.allCases
   }
 
   var body: some View {
