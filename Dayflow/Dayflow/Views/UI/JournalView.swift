@@ -14,7 +14,7 @@ final class JournalCoordinator: ObservableObject {
 
 struct JournalView: View {
   // MARK: - Storage & State
-  @AppStorage("isJournalUnlocked") private var isUnlocked: Bool = false
+  @AppStorage("isJournalUnlocked") private var isUnlocked: Bool = true
   @AppStorage("hasCompletedJournalOnboarding") private var hasCompletedOnboarding: Bool = false
   @EnvironmentObject private var coordinator: JournalCoordinator
   @State private var accessCode: String = ""
@@ -53,6 +53,11 @@ struct JournalView: View {
     .onChange(of: coordinator.showRemindersAfterOnboarding) { _, shouldShow in
       if shouldShow {
         showRemindersSheet = true
+      }
+    }
+    .onAppear {
+      if !isUnlocked {
+        isUnlocked = true
       }
     }
   }
