@@ -255,6 +255,7 @@ struct TimelineCard: Codable, Sendable, Identifiable {
   let otherVideoSummaryURLs: [String]?  // For merged cards, subsequent video URLs
   let appSites: AppSites?
   let isBackupGenerated: Bool?
+  let llmLabel: String?
 
   init(
     id: UUID = UUID(),
@@ -272,7 +273,8 @@ struct TimelineCard: Codable, Sendable, Identifiable {
     videoSummaryURL: String?,
     otherVideoSummaryURLs: [String]?,
     appSites: AppSites?,
-    isBackupGenerated: Bool? = nil
+    isBackupGenerated: Bool? = nil,
+    llmLabel: String? = nil
   ) {
     self.id = id
     self.recordId = recordId
@@ -290,6 +292,7 @@ struct TimelineCard: Codable, Sendable, Identifiable {
     self.otherVideoSummaryURLs = otherVideoSummaryURLs
     self.appSites = appSites
     self.isBackupGenerated = isBackupGenerated
+    self.llmLabel = llmLabel
   }
 }
 
@@ -374,6 +377,7 @@ struct TimelineCardShell: Sendable {
   let appSites: AppSites?
   let isBackupGenerated: Bool?
   let idleMetadata: IdleCardMetadata?
+  let llmLabel: String?
   // No videoSummaryURL here, as it's added later
   // No batchId here, as it's passed as a separate parameter to the save function
 
@@ -388,7 +392,8 @@ struct TimelineCardShell: Sendable {
     distractions: [Distraction]?,
     appSites: AppSites?,
     isBackupGenerated: Bool? = nil,
-    idleMetadata: IdleCardMetadata? = nil
+    idleMetadata: IdleCardMetadata? = nil,
+    llmLabel: String? = nil
   ) {
     self.startTimestamp = startTimestamp
     self.endTimestamp = endTimestamp
@@ -401,6 +406,7 @@ struct TimelineCardShell: Sendable {
     self.appSites = appSites
     self.isBackupGenerated = isBackupGenerated
     self.idleMetadata = idleMetadata
+    self.llmLabel = llmLabel
   }
 }
 
@@ -1088,6 +1094,11 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
         print("✅ Added is_deleted column and composite indexes to timeline_cards")
       }
 
+      if !timelineCardsColumns.contains("llm_label") {
+        try db.execute(sql: "ALTER TABLE timeline_cards ADD COLUMN llm_label TEXT;")
+        print("✅ Added llm_label column to timeline_cards")
+      }
+
       let screenshotColumns = try db.columns(in: "screenshots").map { $0.name }
       if !screenshotColumns.contains("idle_seconds_at_capture") {
         try db.execute(
@@ -1497,14 +1508,15 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
         sql: """
               INSERT INTO timeline_cards(
                   batch_id, start, end, start_ts, end_ts, day, title,
-                  summary, category, subcategory, detailed_summary, metadata
+                  summary, category, subcategory, detailed_summary, metadata, llm_label
                   -- video_summary_url is omitted here
               )
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           """,
         arguments: [
           batchId, card.startTimestamp, card.endTimestamp, startTs, endTs, dayString, card.title,
           card.summary, card.category, card.subcategory, card.detailedSummary, metadataString,
+          card.llmLabel,
         ])
       lastId = db.lastInsertedRowID
     }
@@ -1972,7 +1984,8 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
             videoSummaryURL: row["video_summary_url"],
             otherVideoSummaryURLs: nil,
             appSites: appSites,
-            isBackupGenerated: isBackupGenerated
+            isBackupGenerated: isBackupGenerated,
+            llmLabel: row["llm_label"]
           )
         }
       }) ?? []
@@ -2087,7 +2100,8 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
           videoSummaryURL: row["video_summary_url"],
           otherVideoSummaryURLs: nil,
           appSites: appSites,
-          isBackupGenerated: isBackupGenerated
+          isBackupGenerated: isBackupGenerated,
+            llmLabel: row["llm_label"]
         )
       }
     }
@@ -2148,7 +2162,8 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
           videoSummaryURL: row["video_summary_url"],
           otherVideoSummaryURLs: nil,
           appSites: appSites,
-          isBackupGenerated: isBackupGenerated
+          isBackupGenerated: isBackupGenerated,
+            llmLabel: row["llm_label"]
         )
       }
     }
@@ -2550,13 +2565,14 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
           sql: """
                 INSERT INTO timeline_cards(
                     batch_id, start, end, start_ts, end_ts, day, title,
-                    summary, category, subcategory, detailed_summary, metadata
+                    summary, category, subcategory, detailed_summary, metadata, llm_label
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
           arguments: [
             batchId, card.startTimestamp, card.endTimestamp, startTs, endTs, dayString, card.title,
             card.summary, card.category, card.subcategory, card.detailedSummary, metadataString,
+            card.llmLabel,
           ])
 
         // Capture the ID of the inserted card
