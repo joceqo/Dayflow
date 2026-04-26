@@ -349,10 +349,10 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
     }
 
     // Skip if the user has added the frontmost app to the ignore list
-    let frontBundleId: String? = await MainActor.run {
+    let ignoredCheckBundleId: String? = await MainActor.run {
       NSWorkspace.shared.frontmostApplication?.bundleIdentifier
     }
-    if let bundleId = frontBundleId, IgnoredAppsPreferences.contains(bundleId: bundleId) {
+    if let bundleId = ignoredCheckBundleId, IgnoredAppsPreferences.contains(bundleId: bundleId) {
       dbg("Screenshot skipped - frontmost app \(bundleId) is in ignored list")
       return
     }
