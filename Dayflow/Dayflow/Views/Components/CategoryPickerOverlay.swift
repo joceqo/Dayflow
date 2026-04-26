@@ -6,6 +6,7 @@ struct CategoryPickerOverlay: View {
   let currentCategoryName: String
   var onSelect: (TimelineCategory) -> Void
   var onNavigateToEditor: () -> Void
+  var onClose: (() -> Void)? = nil
 
   private var orderedCategories: [TimelineCategory] {
     let trimmedCurrent = currentCategoryName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -30,6 +31,27 @@ struct CategoryPickerOverlay: View {
 
   var body: some View {
     VStack(spacing: 12) {
+      if onClose != nil {
+        HStack {
+          Spacer()
+          Button(action: { onClose?() }) {
+            Image(systemName: "xmark")
+              .font(.system(size: 11, weight: .semibold))
+              .foregroundColor(Color(red: 0.39, green: 0.35, blue: 0.33))
+              .frame(width: 20, height: 20)
+              .background(Color.white.opacity(0.76))
+              .clipShape(Circle())
+              .overlay(
+                Circle()
+                  .stroke(Color(red: 0.88, green: 0.88, blue: 0.88), lineWidth: 0.5)
+              )
+          }
+          .buttonStyle(.plain)
+          .pointingHandCursor()
+          .accessibilityLabel(Text("Close category picker"))
+        }
+      }
+
       FlowLayout(spacing: 6, rowSpacing: 8) {
         ForEach(orderedCategories) { category in
           Button {
