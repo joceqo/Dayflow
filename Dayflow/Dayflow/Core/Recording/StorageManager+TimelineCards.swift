@@ -352,6 +352,16 @@ extension StorageManager {
       }) ?? []
   }
 
+  func batchIdForTimelineCard(_ cardId: Int64) -> Int64? {
+    (try? timedRead("batchIdForTimelineCard") { db in
+      try Int64.fetchOne(
+        db,
+        sql: "SELECT batch_id FROM timeline_cards WHERE id = ? AND is_deleted = 0",
+        arguments: [cardId]
+      )
+    }) ?? nil
+  }
+
   // All batches, newest first
   func allBatches() -> [(id: Int64, start: Int, end: Int, status: String)] {
     (try? db.read { db in

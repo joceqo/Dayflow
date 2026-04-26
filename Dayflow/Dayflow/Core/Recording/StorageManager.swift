@@ -191,7 +191,7 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
 
   // Dedicated queue for database writes to prevent main thread blocking
   let dbWriteQueue = DispatchQueue(label: "com.dayflow.storage.writes", qos: .utility)
-  let dbContentionTracker = DatabaseContentionTracker()
+  private let dbContentionTracker = DatabaseContentionTracker()
 
   // Timers and queues used by extension files
   var checkpointTimer: DispatchSourceTimer?

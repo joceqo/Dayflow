@@ -32,6 +32,19 @@ class ProviderSetupState: ObservableObject {
     let preference = GeminiModelPreference.load()
     self.geminiModel = preference.primary
     self.lastSavedGeminiModel = preference.primary
+
+    let defaults = UserDefaults.standard
+    if let rawEngine = defaults.string(forKey: "llmLocalEngine"),
+      let savedEngine = LocalEngine(rawValue: rawEngine)
+    {
+      self.localEngine = savedEngine
+      self.localBaseURL =
+        defaults.string(forKey: "llmLocalBaseURL") ?? savedEngine.defaultBaseURL
+    }
+    let savedModelId = defaults.string(forKey: "llmLocalModelId") ?? ""
+    if !savedModelId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      self.localModelId = savedModelId
+    }
   }
 
   var currentStep: SetupStep {
@@ -450,14 +463,17 @@ enum StepContentType {
 
 extension ProviderSetupState {
   @MainActor func selectEngine(_ engine: LocalEngine) {
+    let engineChanged = engine != localEngine
     localEngine = engine
     if engine != .custom {
       localBaseURL = engine.defaultBaseURL
     }
     let defaultModel = LocalModelPreferences.defaultModelId(
       for: engine == .custom ? .ollama : engine)
-    localModelId = defaultModel
-    LocalModelPreferences.syncPreset(for: engine, modelId: defaultModel)
+    if engineChanged {
+      localModelId = defaultModel
+    }
+    LocalModelPreferences.syncPreset(for: engine, modelId: engineChanged ? defaultModel : localModelId)
 
     // Track local engine selection for analytics
     AnalyticsService.shared.capture(
