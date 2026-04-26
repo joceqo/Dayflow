@@ -189,8 +189,8 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
   let slowThresholdMs: Double = 100  // Log anything over 100ms
   let dbMaxReaderCount = 5
 
-  // Dedicated queue for database writes to prevent main thread blocking
-  let dbWriteQueue = DispatchQueue(label: "com.dayflow.storage.writes", qos: .utility)
+  // Keep writer QoS at least user-initiated so UI reads don't block on a lower-priority writer.
+  let dbWriteQueue = DispatchQueue(label: "com.dayflow.storage.writes", qos: .userInitiated)
   private let dbContentionTracker = DatabaseContentionTracker()
 
   // Timers and queues used by extension files
