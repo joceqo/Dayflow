@@ -349,16 +349,27 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
     }
 
     // Skip if the user has added the frontmost app to the ignore list
-    let frontBundleId: String? = await MainActor.run {
+    let ignoredCheckBundleId: String? = await MainActor.run {
       NSWorkspace.shared.frontmostApplication?.bundleIdentifier
     }
-    if let bundleId = frontBundleId, IgnoredAppsPreferences.contains(bundleId: bundleId) {
+    if let bundleId = ignoredCheckBundleId, IgnoredAppsPreferences.contains(bundleId: bundleId) {
       dbg("Screenshot skipped - frontmost app \(bundleId) is in ignored list")
       return
     }
 
     let captureTime = Date()
     let idleSecondsAtCapture = InputIdleSnapshot.currentIdleSeconds()
+
+    // Capture frontmost app + URL + window title (AX-based, no-op if Accessibility isn't granted)
+    let (frontBundleId, frontAppName, frontPid): (String?, String?, pid_t?) = await MainActor.run {
+      let app = NSWorkspace.shared.frontmostApplication
+      return (app?.bundleIdentifier, app?.localizedName, app?.processIdentifier)
+    }
+    let (activeURL, activeWindowTitle): (String?, String?) = {
+      guard let pid = frontPid else { return (nil, nil) }
+      let result = BrowserURLReader.read(pid: pid)
+      return (result.url, result.windowTitle)
+    }()
 
     do {
       // 1. Create content filter for the display
@@ -398,7 +409,11 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
       _ = StorageManager.shared.saveScreenshot(
         url: fileURL,
         capturedAt: captureTime,
-        idleSecondsAtCapture: idleSecondsAtCapture
+        idleSecondsAtCapture: idleSecondsAtCapture,
+        activeAppName: frontAppName,
+        activeAppBundle: frontBundleId,
+        activeURL: activeURL,
+        activeWindowTitle: activeWindowTitle
       )
 
       dbg("📸 Screenshot saved: \(fileURL.lastPathComponent) (\(jpegData.count / 1024)KB)")
