@@ -5,6 +5,7 @@
 
 import AppKit
 import Combine
+import GRDB
 import ScreenCaptureKit
 import ServiceManagement
 
