@@ -177,21 +177,27 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
     }
   }
 
-  private let dbURL: URL
-  private var db: DatabasePool!  // var to allow recovery reassignment
-  private let fileMgr = FileManager.default
-  private let root: URL
-  private let backupsDir: URL
+  let dbURL: URL
+  var db: DatabasePool!  // var to allow recovery reassignment
+  let fileMgr = FileManager.default
+  let root: URL
+  let backupsDir: URL
   var recordingsRoot: URL { root }
 
   // TEMPORARY DEBUG: Remove after identifying slow queries
-  private let debugSlowQueries = true
-  private let slowThresholdMs: Double = 100  // Log anything over 100ms
-  private let dbMaxReaderCount = 5
+  let debugSlowQueries = true
+  let slowThresholdMs: Double = 100  // Log anything over 100ms
+  let dbMaxReaderCount = 5
 
   // Dedicated queue for database writes to prevent main thread blocking
-  private let dbWriteQueue = DispatchQueue(label: "com.dayflow.storage.writes", qos: .utility)
-  private let dbContentionTracker = DatabaseContentionTracker()
+  let dbWriteQueue = DispatchQueue(label: "com.dayflow.storage.writes", qos: .utility)
+  let dbContentionTracker = DatabaseContentionTracker()
+
+  // Timers and queues used by extension files
+  var checkpointTimer: DispatchSourceTimer?
+  var backupTimer: DispatchSourceTimer?
+  var purgeTimer: DispatchSourceTimer?
+  let purgeQ = DispatchQueue(label: "com.dayflow.storage.purge", qos: .utility)
 
   private init() {
     UserDefaultsMigrator.migrateIfNeeded()
@@ -266,7 +272,7 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
   }
 
   // TEMPORARY DEBUG: Timing helpers for database operations
-  private func timedWrite<T>(_ label: String, _ block: (Database) throws -> T) throws -> T {
+  func timedWrite<T>(_ label: String, _ block: (Database) throws -> T) throws -> T {
     let callStart = CFAbsoluteTimeGetCurrent()
     var execStart: CFAbsoluteTime = 0
     var execEnd: CFAbsoluteTime = 0
@@ -358,7 +364,7 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
     }
   }
 
-  private func timedRead<T>(_ label: String, _ block: (Database) throws -> T) throws -> T {
+  func timedRead<T>(_ label: String, _ block: (Database) throws -> T) throws -> T {
     let callStart = CFAbsoluteTimeGetCurrent()
     var execStart: CFAbsoluteTime = 0
     var execEnd: CFAbsoluteTime = 0
