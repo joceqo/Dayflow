@@ -8,6 +8,7 @@ struct SettingsOtherTabView: View {
   var body: some View {
     VStack(alignment: .leading, spacing: SettingsStyle.sectionSpacing) {
       appPreferencesSection
+      SettingsExcludedAppsSection()
       outputLanguageSection
     }
   }
