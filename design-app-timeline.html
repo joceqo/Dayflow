@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dayflow — App Usage View</title>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Figtree', sans-serif;
+    background: #F5F2EE;
+    color: #1a1a1a;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+
+  /* ── App shell ─────────────────────────────── */
+  .shell {
+    width: 980px;
+    background: #FDFBF8;
+    border-radius: 18px;
+    box-shadow: 0 4px 40px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    overflow: hidden;
+    min-height: 680px;
+  }
+
+  /* ── Sidebar ─────────────────────────────── */
+  .sidebar {
+    background: #F5F2EE;
+    border-right: 1px solid #E8E4DF;
+    padding: 24px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .sidebar-section {
+    padding: 6px 16px 2px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    color: #9B9189;
+    text-transform: uppercase;
+  }
+
+  .sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #6B6560;
+    cursor: pointer;
+    border-radius: 8px;
+    margin: 0 8px;
+    transition: background 0.12s;
+  }
+
+  .sidebar-item:hover { background: rgba(0,0,0,0.04); }
+
+  .sidebar-item.active {
+    background: white;
+    color: #1a1a1a;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+
+  .sidebar-item .icon {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    opacity: 0.75;
+  }
+
+  .sidebar-item.active .icon { opacity: 1; }
+
+  /* ── Main content ────────────────────────── */
+  .main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 28px 16px;
+    border-bottom: 1px solid #EDE9E4;
+  }
+
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .date-nav {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .date-nav button {
+    width: 28px;
+    height: 28px;
+    border: 1px solid #DDD9D4;
+    background: white;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #6B6560;
+    transition: all 0.12s;
+  }
+
+  .date-nav button:hover { background: #F5F2EE; }
+
+  .date-label {
+    font-family: 'Nunito', sans-serif;
+    font-size: 17px;
+    font-weight: 700;
+    color: #1a1a1a;
+  }
+
+  .date-sub {
+    font-size: 12px;
+    color: #9B9189;
+    font-weight: 400;
+    margin-left: 4px;
+  }
+
+  /* Tab bar */
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    background: #EDE9E4;
+    border-radius: 10px;
+    padding: 3px;
+  }
+
+  .tab {
+    padding: 5px 14px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #7A7269;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+
+  .tab.active {
+    background: white;
+    color: #1a1a1a;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+
+  /* ── Body split ───────────────────────────── */
+  .body {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* ── App list panel ────────────────────────── */
+  .app-panel {
+    padding: 20px 20px;
+    overflow-y: auto;
+    border-right: 1px solid #EDE9E4;
+  }
+
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+
+  .panel-title {
+    font-family: 'Nunito', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    color: #9B9189;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .total-badge {
+    font-size: 12px;
+    color: #9B9189;
+    background: #EDE9E4;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 600;
+  }
+
+  /* App row */
+  .app-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.12s;
+    margin-bottom: 4px;
+    border: 1.5px solid transparent;
+  }
+
+  .app-row:hover { background: rgba(0,0,0,0.03); }
+
+  .app-row.selected {
+    background: white;
+    border-color: #E0DBD4;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+  }
+
+  .app-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  }
+
+  .app-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .app-name-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 5px;
+  }
+
+  .app-name {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: #1a1a1a;
+  }
+
+  .app-time {
+    font-size: 12px;
+    font-weight: 700;
+    color: #6B6560;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .bar-track {
+    height: 5px;
+    background: #EDE9E4;
+    border-radius: 99px;
+    overflow: hidden;
+  }
+
+  .bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .app-pct {
+    font-size: 11px;
+    color: #B8B0A7;
+    font-weight: 500;
+    width: 30px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+
+  /* Divider */
+  .divider {
+    height: 1px;
+    background: #EDE9E4;
+    margin: 12px 0;
+  }
+
+  /* Summary pills */
+  .summary-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+
+  .summary-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: white;
+    border: 1px solid #E8E4DF;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #4a4a4a;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  }
+
+  .pill-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── Detail panel ──────────────────────────── */
+  .detail-panel {
+    padding: 20px 18px;
+    overflow-y: auto;
+    background: #FDFBF8;
+  }
+
+  .detail-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .detail-app-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  }
+
+  .detail-app-name {
+    font-family: 'Nunito', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    color: #1a1a1a;
+  }
+
+  .detail-app-time {
+    font-size: 12px;
+    color: #9B9189;
+    font-weight: 600;
+  }
+
+  .detail-section-title {
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #B8B0A7;
+    margin-bottom: 8px;
+    margin-top: 16px;
+  }
+
+  /* Mini card */
+  .mini-card {
+    background: white;
+    border: 1px solid #E8E4DF;
+    border-radius: 12px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all 0.12s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .mini-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    transform: translateY(-1px);
+  }
+
+  .mini-card-time {
+    font-size: 10.5px;
+    color: #B8B0A7;
+    font-weight: 600;
+    margin-bottom: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mini-card-title {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #2a2a2a;
+    line-height: 1.35;
+    margin-bottom: 4px;
+  }
+
+  .mini-card-cat {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10.5px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 6px;
+  }
+
+  /* Pending card (no AI yet) */
+  .mini-card.pending {
+    background: #F9F7F4;
+    border-style: dashed;
+    border-color: #D5D0CB;
+  }
+
+  .pending-label {
+    font-size: 11px;
+    color: #B8B0A7;
+    font-weight: 500;
+    font-style: italic;
+  }
+
+  .pending-pulse {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #93BCFF;
+    animation: pulse 1.6s ease-in-out infinite;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.8); }
+  }
+
+  /* Instant stats block */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 2px;
+  }
+
+  .stat-box {
+    background: white;
+    border: 1px solid #E8E4DF;
+    border-radius: 10px;
+    padding: 10px 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  }
+
+  .stat-label {
+    font-size: 10px;
+    color: #B8B0A7;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 3px;
+  }
+
+  .stat-value {
+    font-family: 'Nunito', sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    color: #1a1a1a;
+    line-height: 1;
+  }
+
+  .stat-sub {
+    font-size: 10px;
+    color: #9B9189;
+    margin-top: 2px;
+  }
+
+  /* Instant badge */
+  .instant-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    color: #3A8F6F;
+    background: #E8F5F0;
+    padding: 2px 7px;
+    border-radius: 6px;
+    margin-left: 6px;
+  }
+
+  /* Timeline mini bar */
+  .timeline-mini {
+    height: 28px;
+    background: #F0EDE9;
+    border-radius: 8px;
+    overflow: hidden;
+    display: flex;
+    margin-bottom: 16px;
+    position: relative;
+  }
+
+  .tl-segment {
+    height: 100%;
+    position: relative;
+  }
+
+  .tl-segment:first-child { border-radius: 8px 0 0 8px; }
+  .tl-segment:last-child { border-radius: 0 8px 8px 0; }
+
+  .tl-label {
+    position: absolute;
+    bottom: -16px;
+    font-size: 9px;
+    color: #B8B0A7;
+    white-space: nowrap;
+    transform: translateX(-50%);
+  }
+
+  /* ── Tooltip-style note ───────────────────── */
+  .note-box {
+    background: #EEF3FF;
+    border: 1px solid #C6D8FF;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-top: 16px;
+    font-size: 11.5px;
+    color: #3D5A99;
+    line-height: 1.5;
+  }
+
+  .note-box strong { font-weight: 700; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D5D0CB; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div style="padding: 4px 24px 16px; display:flex; align-items:center; gap:8px;">
+      <div style="width:26px;height:26px;background:linear-gradient(135deg,#FF7A2F,#FF4F4F);border-radius:8px;"></div>
+      <span style="font-family:'Nunito',sans-serif;font-size:15px;font-weight:800;color:#1a1a1a;">Dayflow</span>
+    </div>
+
+    <div class="sidebar-section">Views</div>
+    <div class="sidebar-item">
+      <span class="icon">📋</span> Timeline
+    </div>
+    <div class="sidebar-item active">
+      <span class="icon">📊</span> App Usage
+    </div>
+    <div class="sidebar-item">
+      <span class="icon">📅</span> Weekly
+    </div>
+    <div class="sidebar-item">
+      <span class="icon">💬</span> Chat
+    </div>
+
+    <div style="margin-top:8px;">
+      <div class="sidebar-section">Tools</div>
+      <div class="sidebar-item">
+        <span class="icon">📓</span> Journal
+      </div>
+      <div class="sidebar-item">
+        <span class="icon">⚙️</span> Settings
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- HEADER -->
+    <div class="header">
+      <div class="header-left">
+        <div class="date-nav">
+          <button>‹</button>
+          <span class="date-label">Today
+            <span class="date-sub">Fri, May 23</span>
+          </span>
+          <button>›</button>
+        </div>
+      </div>
+
+      <div class="tab-bar">
+        <div class="tab active">By App</div>
+        <div class="tab">By Category</div>
+        <div class="tab">Timeline</div>
+      </div>
+    </div>
+
+    <!-- BODY -->
+    <div class="body">
+
+      <!-- LEFT: APP LIST -->
+      <div class="app-panel">
+
+        <!-- Summary pills -->
+        <div class="summary-row">
+          <div class="summary-pill">
+            <div class="pill-dot" style="background:#93BCFF;"></div>
+            7h 42m tracked
+          </div>
+          <div class="summary-pill">
+            <div class="pill-dot" style="background:#6CDACD;"></div>
+            12 apps used
+          </div>
+          <div class="summary-pill">
+            <div class="pill-dot" style="background:#FF5950;"></div>
+            38m idle
+          </div>
+          <span class="instant-badge">⚡ Instant</span>
+        </div>
+
+        <!-- Mini timeline bar -->
+        <div style="margin-bottom:24px;">
+          <div class="timeline-mini">
+            <div class="tl-segment" style="width:3%;background:#EDE9E4;"></div>
+            <div class="tl-segment" style="width:18%;background:#93BCFFaa;"></div>
+            <div class="tl-segment" style="width:4%;background:#FFD59088;"></div>
+            <div class="tl-segment" style="width:22%;background:#93BCFFaa;"></div>
+            <div class="tl-segment" style="width:6%;background:#6CDACD88;"></div>
+            <div class="tl-segment" style="width:14%;background:#93BCFFaa;"></div>
+            <div class="tl-segment" style="width:5%;background:#DE9DFC88;"></div>
+            <div class="tl-segment" style="width:16%;background:#93BCFFaa;"></div>
+            <div class="tl-segment" style="width:8%;background:#FFC6B788;"></div>
+            <div class="tl-segment" style="width:4%;background:#EDE9E4;"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;margin-top:18px;padding:0 2px;">
+            <span style="font-size:10px;color:#B8B0A7;">9:00 AM</span>
+            <span style="font-size:10px;color:#B8B0A7;">12:00 PM</span>
+            <span style="font-size:10px;color:#B8B0A7;">3:00 PM</span>
+            <span style="font-size:10px;color:#B8B0A7;">6:00 PM</span>
+          </div>
+        </div>
+
+        <div class="panel-header">
+          <span class="panel-title">Applications</span>
+          <span class="total-badge">7h 42m</span>
+        </div>
+
+        <!-- App rows -->
+        <div class="app-row selected" onclick="selectApp(this, 'cursor')">
+          <div class="app-icon" style="background:linear-gradient(135deg,#1a1a2e,#16213e);">🖊️</div>
+          <div class="app-info">
+            <div class="app-name-row">
+              <span class="app-name">Cursor</span>
+              <span class="app-time">2h 14m</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:100%;background:#93BCFF;"></div>
+            </div>
+          </div>
+          <span class="app-pct">29%</span>
+        </div>
+
+        <div class="app-row" onclick="selectApp(this, 'safari')">
+          <div class="app-icon" style="background:linear-gradient(135deg,#0064e0,#00b4ff);">🌐</div>
+          <div class="app-info">
+            <div class="app-name-row">
+              <span class="app-name">Safari</span>
+              <span class="app-time">1h 22m</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:61%;background:#6CDACD;"></div>
+            </div>
+          </div>
+          <span class="app-pct">18%</span>
+        </div>
+
+        <div class="app-row" onclick="selectApp(this, 'slack')">
+          <div class="app-icon" style="background:linear-gradient(135deg,#611f69,#E01E5A);">💬</div>
+          <div class="app-info">
+            <div class="app-name-row">
+              <span class="app-name">Slack</span>
+              <span class="app-time">54m</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:40%;background:#DE9DFC;"></div>
+            </div>
+          </div>
+          <span class="app-pct">12%</span>
+        </div>
+
+        <div class="app-row" onclick="selectApp(this, 'terminal')">
+          <div class="app-icon" style="background:linear-gradient(135deg,#1a1a1a,#3a3a3a);">⌨️</div>
+          <div class="app-info">
+            <div class="app-name-row">
+              <span class="app-name">Terminal</span>
+              <span class="app-time">38m</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:28%;background:#93BCFF;"></div>
+            </div>
+          </div>
+          <span class="app-pct">8%</span>
+        </div>
+
+        <div class="app-row" onclick="selectApp(this, 'figma')">
+          <div class="app-icon" style="background:linear-gradient(135deg,#F24E1E,#FF7262);">🎨</div>
+          <div class="app-info">
+            <div class="app-name-row">
+              <span class="app-name">Figma</span>
+              <span class="app-time">31m</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:23%;background:#FFC6B7;"></div>
+            </div>
+          </div>
+          <span class="app-pct">7%</span>
+        </div>
+
+        <div class="app-row" onclick="selectApp(this, 'notion')">
+          <div class="app-icon" style="background:linear-gradient(135deg,#f8f8f8,#e0e0e0);">📝</div>
+          <div class="app-info">
+            <div class="app-name-row">
+              <span class="app-name">Notion</span>
+              <span class="app-time">28m</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:21%;background:#FFD590;"></div>
+            </div>
+          </div>
+          <span class="app-pct">6%</span>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="app-row" onclick="selectApp(this, 'other')">
+          <div class="app-icon" style="background:#EDE9E4;font-size:14px;color:#9B9189;">+6</div>
+          <div class="app-info">
+            <div class="app-name-row">
+              <span class="app-name" style="color:#6B6560;">6 other apps</span>
+              <span class="app-time" style="color:#9B9189;">1h 35m</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:34%;background:#D5D0CB;"></div>
+            </div>
+          </div>
+          <span class="app-pct" style="color:#D5D0CB;">21%</span>
+        </div>
+
+      </div>
+
+      <!-- RIGHT: DETAIL PANEL -->
+      <div class="detail-panel" id="detail-panel">
+
+        <!-- Cursor detail (default) -->
+        <div id="detail-cursor">
+          <div class="detail-header">
+            <div class="detail-app-icon" style="background:linear-gradient(135deg,#1a1a2e,#16213e);">🖊️</div>
+            <div>
+              <div class="detail-app-name">Cursor</div>
+              <div class="detail-app-time">2h 14m today · 29% of tracked time</div>
+            </div>
+          </div>
+
+          <!-- Stats -->
+          <div class="stats-grid">
+            <div class="stat-box">
+              <div class="stat-label">Sessions</div>
+              <div class="stat-value">4</div>
+              <div class="stat-sub">avg 33m each</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-label">Longest</div>
+              <div class="stat-value">1h 02m</div>
+              <div class="stat-sub">9:14 – 10:16 AM</div>
+            </div>
+          </div>
+
+          <!-- Activity bar -->
+          <div class="detail-section-title">Activity distribution</div>
+          <div style="display:flex;gap:3px;height:8px;border-radius:6px;overflow:hidden;margin-bottom:16px;">
+            <div style="flex:3;background:#93BCFF;border-radius:6px 0 0 6px;"></div>
+            <div style="flex:1;background:#EDE9E4;"></div>
+            <div style="flex:4;background:#93BCFF;"></div>
+            <div style="flex:1;background:#EDE9E4;"></div>
+            <div style="flex:2;background:#93BCFF;border-radius:0 6px 6px 0;"></div>
+          </div>
+
+          <!-- AI Cards linked to this app -->
+          <div class="detail-section-title">AI cards for this app</div>
+
+          <div class="mini-card">
+            <div class="mini-card-time">9:14 – 10:16 AM · 62min</div>
+            <div class="mini-card-title">Refactoring StorageManager split into extension files</div>
+            <span class="mini-card-cat" style="background:#EEF3FF;color:#3D5A99;">
+              💼 Work · Coding
+            </span>
+          </div>
+
+          <div class="mini-card">
+            <div class="mini-card-time">11:02 – 11:34 AM · 32min</div>
+            <div class="mini-card-title">Fixing GRDB checkpoint ambiguity build error</div>
+            <span class="mini-card-cat" style="background:#EEF3FF;color:#3D5A99;">
+              💼 Work · Debug
+            </span>
+          </div>
+
+          <div class="mini-card">
+            <div class="mini-card-time">2:18 – 2:52 PM · 34min</div>
+            <div class="mini-card-title">Building ApfelProvider Apple Intelligence integration</div>
+            <span class="mini-card-cat" style="background:#EEF3FF;color:#3D5A99;">
+              💼 Work · Coding
+            </span>
+          </div>
+
+          <!-- Pending card (AI not yet run) -->
+          <div class="mini-card pending">
+            <div class="mini-card-time">4:40 – 5:16 PM · 36min</div>
+            <div class="mini-card-title pending-label">
+              <span class="pending-pulse"></span>AI analysis in progress…
+            </div>
+            <span class="mini-card-cat" style="background:#F0EDE9;color:#B8B0A7;">
+              ⏳ Pending
+            </span>
+          </div>
+
+          <div class="note-box">
+            <strong>⚡ Instant data</strong> — App usage times are tracked directly from the OS,
+            no AI needed. AI cards appear here as they finish generating.
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const details = {
+  cursor: `
+    <div class="detail-header">
+      <div class="detail-app-icon" style="background:linear-gradient(135deg,#1a1a2e,#16213e);">🖊️</div>
+      <div>
+        <div class="detail-app-name">Cursor</div>
+        <div class="detail-app-time">2h 14m today · 29% of tracked time</div>
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-label">Sessions</div>
+        <div class="stat-value">4</div>
+        <div class="stat-sub">avg 33m each</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Longest</div>
+        <div class="stat-value">1h 02m</div>
+        <div class="stat-sub">9:14 – 10:16 AM</div>
+      </div>
+    </div>
+    <div class="detail-section-title">Activity distribution</div>
+    <div style="display:flex;gap:3px;height:8px;border-radius:6px;overflow:hidden;margin-bottom:16px;">
+      <div style="flex:3;background:#93BCFF;border-radius:6px 0 0 6px;"></div>
+      <div style="flex:1;background:#EDE9E4;"></div>
+      <div style="flex:4;background:#93BCFF;"></div>
+      <div style="flex:1;background:#EDE9E4;"></div>
+      <div style="flex:2;background:#93BCFF;border-radius:0 6px 6px 0;"></div>
+    </div>
+    <div class="detail-section-title">AI cards for this app</div>
+    <div class="mini-card">
+      <div class="mini-card-time">9:14 – 10:16 AM · 62min</div>
+      <div class="mini-card-title">Refactoring StorageManager split into extension files</div>
+      <span class="mini-card-cat" style="background:#EEF3FF;color:#3D5A99;">💼 Work · Coding</span>
+    </div>
+    <div class="mini-card">
+      <div class="mini-card-time">11:02 – 11:34 AM · 32min</div>
+      <div class="mini-card-title">Fixing GRDB checkpoint ambiguity build error</div>
+      <span class="mini-card-cat" style="background:#EEF3FF;color:#3D5A99;">💼 Work · Debug</span>
+    </div>
+    <div class="mini-card">
+      <div class="mini-card-time">2:18 – 2:52 PM · 34min</div>
+      <div class="mini-card-title">Building ApfelProvider Apple Intelligence integration</div>
+      <span class="mini-card-cat" style="background:#EEF3FF;color:#3D5A99;">💼 Work · Coding</span>
+    </div>
+    <div class="mini-card pending">
+      <div class="mini-card-time">4:40 – 5:16 PM · 36min</div>
+      <div class="mini-card-title pending-label"><span class="pending-pulse"></span>AI analysis in progress…</div>
+      <span class="mini-card-cat" style="background:#F0EDE9;color:#B8B0A7;">⏳ Pending</span>
+    </div>
+    <div class="note-box"><strong>⚡ Instant data</strong> — App usage times are tracked directly from the OS, no AI needed. AI cards appear here as they finish generating.</div>
+  `,
+  safari: `
+    <div class="detail-header">
+      <div class="detail-app-icon" style="background:linear-gradient(135deg,#0064e0,#00b4ff);">🌐</div>
+      <div>
+        <div class="detail-app-name">Safari</div>
+        <div class="detail-app-time">1h 22m today · 18% of tracked time</div>
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-label">Sessions</div>
+        <div class="stat-value">7</div>
+        <div class="stat-sub">avg 12m each</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Longest</div>
+        <div class="stat-value">28m</div>
+        <div class="stat-sub">1:04 – 1:32 PM</div>
+      </div>
+    </div>
+    <div class="detail-section-title">AI cards for this app</div>
+    <div class="mini-card">
+      <div class="mini-card-time">10:18 – 10:44 AM · 26min</div>
+      <div class="mini-card-title">Researching ScreenCaptureKit API docs and WWDC sessions</div>
+      <span class="mini-card-cat" style="background:#EEF3FF;color:#3D5A99;">💼 Work · Research</span>
+    </div>
+    <div class="mini-card">
+      <div class="mini-card-time">1:04 – 1:32 PM · 28min</div>
+      <div class="mini-card-title">Reading GitHub issues and Dayflow PR comments</div>
+      <span class="mini-card-cat" style="background:#EEF3FF;color:#3D5A99;">💼 Work · Review</span>
+    </div>
+    <div class="mini-card">
+      <div class="mini-card-time">3:50 – 4:06 PM · 16min</div>
+      <div class="mini-card-title">Checking Hacker News and Twitter during break</div>
+      <span class="mini-card-cat" style="background:#FFF0EE;color:#CC3A30;">🎯 Distraction</span>
+    </div>
+    <div class="mini-card pending">
+      <div class="mini-card-time">5:20 – 5:32 PM · 12min</div>
+      <div class="mini-card-title pending-label"><span class="pending-pulse"></span>AI analysis in progress…</div>
+      <span class="mini-card-cat" style="background:#F0EDE9;color:#B8B0A7;">⏳ Pending</span>
+    </div>
+  `,
+  slack: `
+    <div class="detail-header">
+      <div class="detail-app-icon" style="background:linear-gradient(135deg,#611f69,#E01E5A);">💬</div>
+      <div>
+        <div class="detail-app-name">Slack</div>
+        <div class="detail-app-time">54m today · 12% of tracked time</div>
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-label">Sessions</div>
+        <div class="stat-value">9</div>
+        <div class="stat-sub">avg 6m each</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Longest</div>
+        <div class="stat-value">18m</div>
+        <div class="stat-sub">10:48 – 11:06 AM</div>
+      </div>
+    </div>
+    <div class="detail-section-title">AI cards for this app</div>
+    <div class="mini-card">
+      <div class="mini-card-time">10:48 – 11:06 AM · 18min</div>
+      <div class="mini-card-title">Team standup and PR review discussion in #engineering</div>
+      <span class="mini-card-cat" style="background:#F5EEFF;color:#7B3FA8;">💬 Communication</span>
+    </div>
+    <div class="mini-card">
+      <div class="mini-card-time">2:02 – 2:14 PM · 12min</div>
+      <div class="mini-card-title">Responding to design feedback on Figma mockups</div>
+      <span class="mini-card-cat" style="background:#F5EEFF;color:#7B3FA8;">💬 Communication</span>
+    </div>
+  `,
+  terminal: `
+    <div class="detail-header">
+      <div class="detail-app-icon" style="background:linear-gradient(135deg,#1a1a1a,#3a3a3a);">⌨️</div>
+      <div>
+        <div class="detail-app-name">Terminal</div>
+        <div class="detail-app-time">38m today · 8% of tracked time</div>
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-label">Sessions</div>
+        <div class="stat-value">6</div>
+        <div class="stat-sub">avg 6m each</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Longest</div>
+        <div class="stat-value">14m</div>
+        <div class="stat-sub">11:34 – 11:48 AM</div>
+      </div>
+    </div>
+    <div class="detail-section-title">AI cards for this app</div>
+    <div class="mini-card">
+      <div class="mini-card-time">11:34 – 11:48 AM · 14min</div>
+      <div class="mini-card-title">Running Xcode build and checking GRDB migration logs</div>
+      <span class="mini-card-cat" style="background:#EEF3FF;color:#3D5A99;">💼 Work · Coding</span>
+    </div>
+  `,
+  figma: `
+    <div class="detail-header">
+      <div class="detail-app-icon" style="background:linear-gradient(135deg,#F24E1E,#FF7262);">🎨</div>
+      <div>
+        <div class="detail-app-name">Figma</div>
+        <div class="detail-app-time">31m today · 7% of tracked time</div>
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-label">Sessions</div>
+        <div class="stat-value">2</div>
+        <div class="stat-sub">avg 15m each</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Longest</div>
+        <div class="stat-value">20m</div>
+        <div class="stat-sub">1:38 – 1:58 PM</div>
+      </div>
+    </div>
+    <div class="detail-section-title">AI cards for this app</div>
+    <div class="mini-card">
+      <div class="mini-card-time">1:38 – 1:58 PM · 20min</div>
+      <div class="mini-card-title">Designing App Usage view mockup in Dayflow design system</div>
+      <span class="mini-card-cat" style="background:#FFF5F0;color:#B04A20;">🎨 Design</span>
+    </div>
+  `,
+  notion: `
+    <div class="detail-header">
+      <div class="detail-app-icon" style="background:linear-gradient(135deg,#f8f8f8,#e0e0e0);">📝</div>
+      <div>
+        <div class="detail-app-name">Notion</div>
+        <div class="detail-app-time">28m today · 6% of tracked time</div>
+      </div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-label">Sessions</div>
+        <div class="stat-value">3</div>
+        <div class="stat-sub">avg 9m each</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Longest</div>
+        <div class="stat-value">14m</div>
+        <div class="stat-sub">9:00 – 9:14 AM</div>
+      </div>
+    </div>
+    <div class="detail-section-title">AI cards for this app</div>
+    <div class="mini-card">
+      <div class="mini-card-time">9:00 – 9:14 AM · 14min</div>
+      <div class="mini-card-title">Morning planning — reviewing sprint tasks and priorities</div>
+      <span class="mini-card-cat" style="background:#EEF3FF;color:#3D5A99;">💼 Work · Planning</span>
+    </div>
+  `,
+  other: `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+      <div style="width:38px;height:38px;border-radius:10px;background:#EDE9E4;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#9B9189;">+6</div>
+      <div>
+        <div class="detail-app-name" style="color:#6B6560;">6 other apps</div>
+        <div class="detail-app-time">1h 35m combined</div>
+      </div>
+    </div>
+    <div class="app-row" style="margin-bottom:6px;padding:8px 10px;">
+      <div class="app-icon" style="background:#E8F0FF;font-size:16px;width:28px;height:28px;">📧</div>
+      <div class="app-info"><div class="app-name-row"><span class="app-name">Mail</span><span class="app-time">22m</span></div><div class="bar-track"><div class="bar-fill" style="width:40%;background:#6CDACD;"></div></div></div>
+    </div>
+    <div class="app-row" style="margin-bottom:6px;padding:8px 10px;">
+      <div class="app-icon" style="background:#FFF0E8;font-size:16px;width:28px;height:28px;">📅</div>
+      <div class="app-info"><div class="app-name-row"><span class="app-name">Calendar</span><span class="app-time">18m</span></div><div class="bar-track"><div class="bar-fill" style="width:33%;background:#FFD590;"></div></div></div>
+    </div>
+    <div class="app-row" style="margin-bottom:6px;padding:8px 10px;">
+      <div class="app-icon" style="background:#F0F8FF;font-size:16px;width:28px;height:28px;">🎵</div>
+      <div class="app-info"><div class="app-name-row"><span class="app-name">Spotify</span><span class="app-time">14m</span></div><div class="bar-track"><div class="bar-fill" style="width:26%;background:#DE9DFC;"></div></div></div>
+    </div>
+  `
+};
+
+function selectApp(el, appId) {
+  document.querySelectorAll('.app-row').forEach(r => r.classList.remove('selected'));
+  el.classList.add('selected');
+  const panel = document.getElementById('detail-panel');
+  panel.innerHTML = details[appId] || '';
+}
+</script>
+</body>
+</html>
