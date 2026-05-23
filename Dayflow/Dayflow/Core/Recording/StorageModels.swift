@@ -296,6 +296,26 @@ struct AnalysisBatchDebugEntry: Sendable {
   let reason: String?
 }
 
+// Per-app aggregation row for the App Usage tab.
+struct AppUsageEntry: Identifiable, Sendable {
+  let bundleId: String
+  let appName: String
+  var totalSeconds: Int
+  var sessionCount: Int
+  var longestSessionSeconds: Int
+  var longestSessionStart: Date
+  var longestSessionEnd: Date
+  var linkedCardIds: [Int64]
+  var id: String { bundleId }
+}
+
+// A contiguous foreground run for a single app on a given day.
+struct AppSession: Sendable {
+  let start: Date
+  let end: Date
+  var durationSeconds: Int
+}
+
 // Extended TimelineCard with timestamp fields for internal use
 struct TimelineCardWithTimestamps {
   let id: Int64

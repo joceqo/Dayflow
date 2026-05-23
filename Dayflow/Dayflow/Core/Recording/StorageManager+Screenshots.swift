@@ -11,7 +11,13 @@ extension StorageManager {
     return root.appendingPathComponent("\(df.string(from: Date())).jpg")
   }
 
-  func saveScreenshot(url: URL, capturedAt: Date, idleSecondsAtCapture: Int?) -> Int64? {
+  func saveScreenshot(
+    url: URL,
+    capturedAt: Date,
+    idleSecondsAtCapture: Int?,
+    frontmostBundleId: String?,
+    frontmostAppName: String?
+  ) -> Int64? {
     let timestamp = Int(capturedAt.timeIntervalSince1970)
     let path = url.path
     let fileSize: Int64? = {
@@ -27,9 +33,16 @@ extension StorageManager {
     try? timedWrite("saveScreenshot") { db in
       try db.execute(
         sql: """
-              INSERT INTO screenshots(captured_at, file_path, file_size, idle_seconds_at_capture)
-              VALUES (?, ?, ?, ?)
-          """, arguments: [timestamp, path, fileSize, idleSecondsAtCapture])
+              INSERT INTO screenshots(
+                  captured_at, file_path, file_size, idle_seconds_at_capture,
+                  frontmost_bundle_id, frontmost_app_name
+              )
+              VALUES (?, ?, ?, ?, ?, ?)
+          """,
+        arguments: [
+          timestamp, path, fileSize, idleSecondsAtCapture,
+          frontmostBundleId, frontmostAppName,
+        ])
       screenshotId = db.lastInsertedRowID
     }
     return screenshotId
@@ -42,7 +55,9 @@ extension StorageManager {
       filePath: row["file_path"],
       fileSize: row["file_size"],
       idleSecondsAtCapture: row["idle_seconds_at_capture"],
-      isDeleted: (row["is_deleted"] as? Int ?? 0) != 0
+      isDeleted: (row["is_deleted"] as? Int ?? 0) != 0,
+      frontmostBundleId: row["frontmost_bundle_id"],
+      frontmostAppName: row["frontmost_app_name"]
     )
   }
 

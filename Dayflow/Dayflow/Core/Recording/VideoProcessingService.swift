@@ -339,7 +339,9 @@ actor VideoProcessingService {
           filePath: url.path,
           fileSize: nil,
           idleSecondsAtCapture: nil,
-          isDeleted: false
+          isDeleted: false,
+          frontmostBundleId: nil,
+          frontmostAppName: nil
         ))
     }
 

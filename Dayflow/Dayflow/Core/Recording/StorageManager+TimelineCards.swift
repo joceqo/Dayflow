@@ -466,6 +466,59 @@ extension StorageManager {
     return cards ?? []
   }
 
+  // Hydrate a fixed list of card IDs. Used by the App Usage inspector after
+  // overlap-matching sessions to card timestamps in StorageManager+AppUsage.
+  func fetchTimelineCards(byIds ids: [Int64]) -> [TimelineCard] {
+    guard !ids.isEmpty else { return [] }
+    let decoder = JSONDecoder()
+    let placeholders = ids.map { _ in "?" }.joined(separator: ",")
+    let cards: [TimelineCard]? = try? timedRead("fetchTimelineCards(byIds:\(ids.count))") { db in
+      try Row.fetchAll(
+        db,
+        sql: """
+              SELECT * FROM timeline_cards
+              WHERE id IN (\(placeholders))
+                AND is_deleted = 0
+              ORDER BY start_ts ASC, start ASC
+          """, arguments: StatementArguments(ids)
+      )
+      .map { row in
+        var distractions: [Distraction]? = nil
+        var appSites: AppSites? = nil
+        var isBackupGenerated: Bool? = nil
+        if let metadataString: String = row["metadata"],
+          let jsonData = metadataString.data(using: .utf8)
+        {
+          if let meta = try? decoder.decode(TimelineMetadata.self, from: jsonData) {
+            distractions = meta.distractions
+            appSites = meta.appSites
+            isBackupGenerated = meta.isBackupGenerated
+          } else if let legacy = try? decoder.decode([Distraction].self, from: jsonData) {
+            distractions = legacy
+          }
+        }
+        return TimelineCard(
+          recordId: row["id"],
+          batchId: row["batch_id"],
+          startTimestamp: row["start"] ?? "",
+          endTimestamp: row["end"] ?? "",
+          category: row["category"],
+          subcategory: row["subcategory"],
+          title: row["title"],
+          summary: row["summary"],
+          detailedSummary: row["detailed_summary"],
+          day: row["day"],
+          distractions: distractions,
+          videoSummaryURL: row["video_summary_url"],
+          otherVideoSummaryURLs: nil,
+          appSites: appSites,
+          isBackupGenerated: isBackupGenerated
+        )
+      }
+    }
+    return cards ?? []
+  }
+
   func fetchTimelineCardsByTimeRange(from: Date, to: Date) -> [TimelineCard] {
     let decoder = JSONDecoder()
     let fromTs = Int(from.timeIntervalSince1970)

@@ -139,6 +139,24 @@ enum RecordingPrivacyPreferences {
     )
   }
 
+  // Single MainActor read returning both app metadata and the blocked flag.
+  // App Usage uses (bundleId, name) when !isBlocked; passes nil/nil otherwise
+  // so blocked bundle IDs never reach the screenshots table.
+  @MainActor
+  static func frontmostApplicationContext(
+    defaults: UserDefaults = .standard
+  ) -> (bundleId: String?, name: String?, isBlocked: Bool) {
+    guard let app = NSWorkspace.shared.frontmostApplication else {
+      return (nil, nil, false)
+    }
+    let blocked = isApplicationBlocked(
+      bundleIdentifier: app.bundleIdentifier,
+      applicationName: app.localizedName,
+      defaults: defaults
+    )
+    return (app.bundleIdentifier, app.localizedName, blocked)
+  }
+
   static func blockedScreenCaptureApplications(
     in content: SCShareableContent,
     defaults: UserDefaults = .standard
