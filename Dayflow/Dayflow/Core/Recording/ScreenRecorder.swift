@@ -378,7 +378,8 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
           capturedAt: captureTime,
           idleSecondsAtCapture: idleSecondsAtCapture,
           frontmostBundleId: nil,
-          frontmostAppName: nil
+          frontmostAppName: nil,
+          frontmostWindowTitle: nil
         )
         dbg("🔒 Screenshot redacted for blocked foreground application")
         return
@@ -423,7 +424,8 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
         capturedAt: captureTime,
         idleSecondsAtCapture: idleSecondsAtCapture,
         frontmostBundleId: appContext.bundleId,
-        frontmostAppName: appContext.name
+        frontmostAppName: appContext.name,
+        frontmostWindowTitle: appContext.windowTitle
       )
 
       dbg("📸 Screenshot saved: \(fileURL.lastPathComponent) (\(jpegData.count / 1024)KB)")
@@ -458,7 +460,8 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
     capturedAt: Date,
     idleSecondsAtCapture: Int?,
     frontmostBundleId: String?,
-    frontmostAppName: String?
+    frontmostAppName: String?,
+    frontmostWindowTitle: String?
   ) throws -> URL {
     let fileURL = StorageManager.shared.nextScreenshotURL()
     try jpegData.write(to: fileURL)
@@ -468,7 +471,8 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
       capturedAt: capturedAt,
       idleSecondsAtCapture: idleSecondsAtCapture,
       frontmostBundleId: frontmostBundleId,
-      frontmostAppName: frontmostAppName
+      frontmostAppName: frontmostAppName,
+      frontmostWindowTitle: frontmostWindowTitle
     )
     return fileURL
   }

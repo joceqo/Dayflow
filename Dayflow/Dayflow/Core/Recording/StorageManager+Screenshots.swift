@@ -16,7 +16,8 @@ extension StorageManager {
     capturedAt: Date,
     idleSecondsAtCapture: Int?,
     frontmostBundleId: String?,
-    frontmostAppName: String?
+    frontmostAppName: String?,
+    frontmostWindowTitle: String?
   ) -> Int64? {
     let timestamp = Int(capturedAt.timeIntervalSince1970)
     let path = url.path
@@ -35,13 +36,13 @@ extension StorageManager {
         sql: """
               INSERT INTO screenshots(
                   captured_at, file_path, file_size, idle_seconds_at_capture,
-                  frontmost_bundle_id, frontmost_app_name
+                  frontmost_bundle_id, frontmost_app_name, frontmost_window_title
               )
-              VALUES (?, ?, ?, ?, ?, ?)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
           """,
         arguments: [
           timestamp, path, fileSize, idleSecondsAtCapture,
-          frontmostBundleId, frontmostAppName,
+          frontmostBundleId, frontmostAppName, frontmostWindowTitle,
         ])
       screenshotId = db.lastInsertedRowID
     }
@@ -57,7 +58,8 @@ extension StorageManager {
       idleSecondsAtCapture: row["idle_seconds_at_capture"],
       isDeleted: (row["is_deleted"] as? Int ?? 0) != 0,
       frontmostBundleId: row["frontmost_bundle_id"],
-      frontmostAppName: row["frontmost_app_name"]
+      frontmostAppName: row["frontmost_app_name"],
+      frontmostWindowTitle: row["frontmost_window_title"]
     )
   }
 

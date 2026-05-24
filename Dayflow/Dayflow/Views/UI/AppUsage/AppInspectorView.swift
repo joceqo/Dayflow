@@ -69,18 +69,34 @@ struct AppInspectorView: View {
         header(entry: entry)
         statsRow(entry: entry)
 
-        Text("Activity cards")
-          .font(.custom("Figtree", size: 9.5).weight(.bold))
-          .tracking(0.8)
-          .foregroundColor(Color(hex: "AFA7A0"))
-          .textCase(.uppercase)
+        if !entry.topContexts.isEmpty {
+          sectionLabel("Top contexts")
+          topContextsSection(entry: entry)
+        }
 
+        sectionLabel("Activity cards")
         cardsSection(entry: entry)
 
         Spacer(minLength: 16)
         instantNotice
       }
       .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private func sectionLabel(_ text: String) -> some View {
+    Text(text)
+      .font(.custom("Figtree", size: 9.5).weight(.bold))
+      .tracking(0.8)
+      .foregroundColor(Color(hex: "AFA7A0"))
+      .textCase(.uppercase)
+  }
+
+  private func topContextsSection(entry: AppUsageEntry) -> some View {
+    VStack(spacing: 4) {
+      ForEach(entry.topContexts) { context in
+        AppUsageContextRow(context: context)
+      }
     }
   }
 
@@ -221,6 +237,35 @@ struct AppInspectorView: View {
         linkedCards = fetched
       }
     }
+  }
+}
+
+private struct AppUsageContextRow: View {
+  let context: AppContextSummary
+
+  var body: some View {
+    HStack(spacing: 8) {
+      Text(context.title)
+        .font(.custom("Figtree", size: 11).weight(.medium))
+        .foregroundColor(.black)
+        .lineLimit(2)
+        .truncationMode(.middle)
+        .frame(maxWidth: .infinity, alignment: .leading)
+      Text(formatHoursMinutes(seconds: context.seconds))
+        .font(.custom("Figtree", size: 10).weight(.semibold))
+        .foregroundColor(Color(hex: "6B6560"))
+        .frame(width: 44, alignment: .trailing)
+    }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 6)
+    .background(
+      RoundedRectangle(cornerRadius: 7, style: .continuous)
+        .fill(Color.white)
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: 7, style: .continuous)
+        .stroke(Color(hex: "ECECEC"), lineWidth: 1)
+    )
   }
 }
 

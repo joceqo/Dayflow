@@ -341,7 +341,8 @@ actor VideoProcessingService {
           idleSecondsAtCapture: nil,
           isDeleted: false,
           frontmostBundleId: nil,
-          frontmostAppName: nil
+          frontmostAppName: nil,
+          frontmostWindowTitle: nil
         ))
     }
 

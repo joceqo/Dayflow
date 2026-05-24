@@ -140,21 +140,50 @@ enum RecordingPrivacyPreferences {
   }
 
   // Single MainActor read returning both app metadata and the blocked flag.
-  // App Usage uses (bundleId, name) when !isBlocked; passes nil/nil otherwise
-  // so blocked bundle IDs never reach the screenshots table.
+  // App Usage uses (bundleId, name, windowTitle) when !isBlocked; passes
+  // nils otherwise so blocked apps never reach the screenshots table.
   @MainActor
   static func frontmostApplicationContext(
     defaults: UserDefaults = .standard
-  ) -> (bundleId: String?, name: String?, isBlocked: Bool) {
+  ) -> (bundleId: String?, name: String?, windowTitle: String?, isBlocked: Bool) {
     guard let app = NSWorkspace.shared.frontmostApplication else {
-      return (nil, nil, false)
+      return (nil, nil, nil, false)
     }
     let blocked = isApplicationBlocked(
       bundleIdentifier: app.bundleIdentifier,
       applicationName: app.localizedName,
       defaults: defaults
     )
-    return (app.bundleIdentifier, app.localizedName, blocked)
+    let windowTitle = blocked ? nil : frontmostWindowTitle(forPID: app.processIdentifier)
+    return (app.bundleIdentifier, app.localizedName, windowTitle, blocked)
+  }
+
+  // Reads the title of the frontmost on-screen window owned by `pid`. Uses
+  // CGWindowListCopyWindowInfo which already requires screen-recording
+  // permission (which Dayflow has) — no new TCC prompt. Returns nil when the
+  // app doesn't publish a name, when the window list lookup fails, or when
+  // the title would be empty.
+  static func frontmostWindowTitle(forPID pid: pid_t) -> String? {
+    let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+    guard
+      let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]]
+    else {
+      return nil
+    }
+    // The first entry per PID is the frontmost window for that owner (the
+    // list is z-ordered, foreground-first).
+    for entry in list {
+      guard
+        let ownerPID = entry[kCGWindowOwnerPID as String] as? Int,
+        pid_t(ownerPID) == pid
+      else { continue }
+      if let name = entry[kCGWindowName as String] as? String,
+        !name.isEmpty
+      {
+        return name
+      }
+    }
+    return nil
   }
 
   static func blockedScreenCaptureApplications(

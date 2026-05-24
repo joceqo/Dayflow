@@ -96,7 +96,8 @@ protocol StorageManaging: Sendable {
     capturedAt: Date,
     idleSecondsAtCapture: Int?,
     frontmostBundleId: String?,
-    frontmostAppName: String?
+    frontmostAppName: String?,
+    frontmostWindowTitle: String?
   ) -> Int64?
 
   /// Fetch screenshots that haven't been assigned to a batch yet

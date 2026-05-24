@@ -702,6 +702,15 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
         print("✅ Added frontmost_bundle_id and frontmost_app_name columns to screenshots")
       }
 
+      let screenshotColumnsForWindowTitle = try db.columns(in: "screenshots").map { $0.name }
+      if !screenshotColumnsForWindowTitle.contains("frontmost_window_title") {
+        try db.execute(
+          sql: """
+                ALTER TABLE screenshots ADD COLUMN frontmost_window_title TEXT;
+            """)
+        print("✅ Added frontmost_window_title column to screenshots")
+      }
+
       let dayGoalColumns = try db.columns(in: "day_goals").map { $0.name }
       if !dayGoalColumns.contains("is_skipped") {
         try db.execute(

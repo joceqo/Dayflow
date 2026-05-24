@@ -306,7 +306,18 @@ struct AppUsageEntry: Identifiable, Sendable {
   var longestSessionStart: Date
   var longestSessionEnd: Date
   var linkedCardIds: [Int64]
+  var topContexts: [AppContextSummary]
   var id: String { bundleId }
+}
+
+// A grouped window-title bucket for the "Top contexts" section. `seconds` is
+// approximated as `occurrences × screenshot_interval` — close enough for a
+// relative ranking, not for precise reporting.
+struct AppContextSummary: Identifiable, Sendable {
+  let title: String
+  let occurrences: Int
+  let seconds: Int
+  var id: String { title }
 }
 
 // A contiguous foreground run for a single app on a given day.

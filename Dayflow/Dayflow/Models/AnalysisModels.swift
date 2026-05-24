@@ -30,6 +30,7 @@ struct Screenshot: Codable, Sendable {
   let isDeleted: Bool
   let frontmostBundleId: String?
   let frontmostAppName: String?
+  let frontmostWindowTitle: String?
 
   var fileURL: URL {
     URL(fileURLWithPath: filePath)

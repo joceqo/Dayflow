@@ -83,12 +83,13 @@ extension StorageManager {
     endTs: Int,
     cardBounds: [(id: Int64, startTs: Int, endTs: Int)]
   ) -> [AppUsageEntry] {
-    let rows: [(bundleId: String, appName: String, capturedAt: Int)] =
+    typealias Row4 = (bundleId: String, appName: String, windowTitle: String?, capturedAt: Int)
+    let rows: [Row4] =
       (try? timedRead("fetchAppUsage(\(label))") { db in
         try Row.fetchAll(
           db,
           sql: """
-                SELECT frontmost_bundle_id, frontmost_app_name, captured_at
+                SELECT frontmost_bundle_id, frontmost_app_name, frontmost_window_title, captured_at
                 FROM screenshots
                 WHERE captured_at >= ?
                   AND captured_at < ?
@@ -98,11 +99,12 @@ extension StorageManager {
                 ORDER BY captured_at ASC
             """, arguments: [startTs, endTs]
         )
-        .compactMap { row -> (String, String, Int)? in
+        .compactMap { row -> Row4? in
           guard let bundleId: String = row["frontmost_bundle_id"] else { return nil }
           let appName: String = row["frontmost_app_name"] ?? bundleId
+          let title: String? = row["frontmost_window_title"]
           let capturedAt: Int = row["captured_at"]
-          return (bundleId, appName, capturedAt)
+          return (bundleId, appName, title, capturedAt)
         }
       }) ?? []
 
@@ -111,7 +113,7 @@ extension StorageManager {
     let blocked = Set(
       RecordingPrivacyPreferences.blockedApplicationIdentifiers().map { $0.lowercased() }
     )
-    let filtered: [(bundleId: String, appName: String, capturedAt: Int)] =
+    let filtered: [Row4] =
       blocked.isEmpty
       ? rows
       : rows.filter { row in
@@ -119,8 +121,20 @@ extension StorageManager {
           && !blocked.contains(row.appName.lowercased())
       }
 
-    let sessionsByApp = groupSessionsByApp(rows: filtered)
+    // Title occurrences per bundle, for "Top contexts" — counted before
+    // session grouping so frequency reflects actual screenshot share.
+    var titleCounts: [String: [String: Int]] = [:]
+    for row in filtered {
+      guard let title = row.windowTitle, !title.isEmpty else { continue }
+      titleCounts[row.bundleId, default: [:]][title, default: 0] += 1
+    }
+
+    let sessionsByApp = groupSessionsByApp(
+      rows: filtered.map { ($0.bundleId, $0.appName, $0.capturedAt) }
+    )
     guard !sessionsByApp.isEmpty else { return [] }
+
+    let secondsPerOccurrence = max(1, Int(ScreenshotConfig.interval.rounded()))
 
     var entries: [AppUsageEntry] = []
     entries.reserveCapacity(sessionsByApp.count)
@@ -140,6 +154,18 @@ extension StorageManager {
         }
       }
 
+      let topContexts: [AppContextSummary] =
+        (titleCounts[bundleId] ?? [:])
+        .sorted { $0.value > $1.value }
+        .prefix(5)
+        .map {
+          AppContextSummary(
+            title: $0.key,
+            occurrences: $0.value,
+            seconds: $0.value * secondsPerOccurrence
+          )
+        }
+
       entries.append(
         AppUsageEntry(
           bundleId: bundleId,
@@ -149,7 +175,8 @@ extension StorageManager {
           longestSessionSeconds: longest?.session.durationSeconds ?? 0,
           longestSessionStart: longest?.session.start ?? Date(timeIntervalSince1970: 0),
           longestSessionEnd: longest?.session.end ?? Date(timeIntervalSince1970: 0),
-          linkedCardIds: linked.sorted()
+          linkedCardIds: linked.sorted(),
+          topContexts: topContexts
         ))
     }
 
