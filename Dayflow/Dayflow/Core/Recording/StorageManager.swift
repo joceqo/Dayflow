@@ -683,6 +683,34 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
         print("✅ Added idle_seconds_at_capture column to screenshots")
       }
 
+      let screenshotColumnsForFrontmost = try db.columns(in: "screenshots").map { $0.name }
+      if !screenshotColumnsForFrontmost.contains("frontmost_bundle_id") {
+        try db.execute(
+          sql: """
+                ALTER TABLE screenshots ADD COLUMN frontmost_bundle_id TEXT;
+            """)
+        try db.execute(
+          sql: """
+                ALTER TABLE screenshots ADD COLUMN frontmost_app_name TEXT;
+            """)
+        try db.execute(
+          sql: """
+                CREATE INDEX IF NOT EXISTS idx_screenshots_app_usage
+                ON screenshots(captured_at, frontmost_bundle_id)
+                WHERE is_deleted = 0 AND frontmost_bundle_id IS NOT NULL;
+            """)
+        print("✅ Added frontmost_bundle_id and frontmost_app_name columns to screenshots")
+      }
+
+      let screenshotColumnsForWindowTitle = try db.columns(in: "screenshots").map { $0.name }
+      if !screenshotColumnsForWindowTitle.contains("frontmost_window_title") {
+        try db.execute(
+          sql: """
+                ALTER TABLE screenshots ADD COLUMN frontmost_window_title TEXT;
+            """)
+        print("✅ Added frontmost_window_title column to screenshots")
+      }
+
       let dayGoalColumns = try db.columns(in: "day_goals").map { $0.name }
       if !dayGoalColumns.contains("is_skipped") {
         try db.execute(

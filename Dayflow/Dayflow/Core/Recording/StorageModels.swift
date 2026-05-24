@@ -296,6 +296,37 @@ struct AnalysisBatchDebugEntry: Sendable {
   let reason: String?
 }
 
+// Per-app aggregation row for the App Usage tab.
+struct AppUsageEntry: Identifiable, Sendable {
+  let bundleId: String
+  let appName: String
+  var totalSeconds: Int
+  var sessionCount: Int
+  var longestSessionSeconds: Int
+  var longestSessionStart: Date
+  var longestSessionEnd: Date
+  var linkedCardIds: [Int64]
+  var topContexts: [AppContextSummary]
+  var id: String { bundleId }
+}
+
+// A grouped window-title bucket for the "Top contexts" section. `seconds` is
+// approximated as `occurrences × screenshot_interval` — close enough for a
+// relative ranking, not for precise reporting.
+struct AppContextSummary: Identifiable, Sendable {
+  let title: String
+  let occurrences: Int
+  let seconds: Int
+  var id: String { title }
+}
+
+// A contiguous foreground run for a single app on a given day.
+struct AppSession: Sendable {
+  let start: Date
+  let end: Date
+  var durationSeconds: Int
+}
+
 // Extended TimelineCard with timestamp fields for internal use
 struct TimelineCardWithTimestamps {
   let id: Int64

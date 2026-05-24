@@ -538,6 +538,8 @@ extension MainView {
         ChatPanelView()
       case .daily:
         DailyView(selectedDate: $selectedDate)
+      case .appUsage:
+        AppUsageView(selectedDate: $selectedDate)
       case .weekly:
         WeeklyView()
       case .journal:

@@ -18,6 +18,7 @@ private enum SidebarMetrics {
 enum SidebarIcon: CaseIterable {
   case timeline
   case daily
+  case appUsage
   case weekly
   case chat
   case journal
@@ -28,6 +29,7 @@ enum SidebarIcon: CaseIterable {
     switch self {
     case .timeline: return "TimelineIcon"
     case .daily: return "DailyIcon"
+    case .appUsage: return nil
     case .weekly: return "WeeklyIcon"
     case .chat: return "ChatIcon"
     case .journal: return "JournalIcon"
@@ -38,6 +40,7 @@ enum SidebarIcon: CaseIterable {
 
   var systemNameFallback: String? {
     switch self {
+    case .appUsage: return "chart.bar.fill"
     case .bug: return "exclamationmark.bubble.fill"
     case .settings: return "gearshape.fill"
     default: return nil
@@ -48,6 +51,7 @@ enum SidebarIcon: CaseIterable {
     switch self {
     case .timeline: return "Timeline"
     case .daily: return "Daily"
+    case .appUsage: return "Apps"
     case .weekly: return "Weekly"
     case .chat: return "Chat"
     case .journal: return "Journal"
@@ -60,6 +64,7 @@ enum SidebarIcon: CaseIterable {
     switch self {
     case .timeline: return "timeline"
     case .daily: return "daily"
+    case .appUsage: return "app_usage"
     case .weekly: return "weekly"
     case .chat: return "dashboard"
     case .journal: return "journal"

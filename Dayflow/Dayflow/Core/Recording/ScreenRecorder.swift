@@ -353,15 +353,21 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
 
     do {
       let captureSize = scaledCaptureSize(for: display)
-      if let blockedApplication = await MainActor.run(body: {
-        RecordingPrivacyPreferences.frontmostBlockedApplication()
-      }) {
+      // Single MainActor read: blocked-or-not + app metadata. The bundle/name
+      // is persisted only when !isBlocked so blocked apps can never appear in
+      // the App Usage tab regardless of how aggregation queries are written.
+      let appContext = await MainActor.run {
+        RecordingPrivacyPreferences.frontmostApplicationContext()
+      }
+
+      if appContext.isBlocked {
+        let placeholderName = appContext.name ?? appContext.bundleId ?? "Private app"
         guard
           let jpegData = await MainActor.run(body: {
             RecordingPrivacyPlaceholder.jpegData(
               size: CGSize(width: captureSize.width, height: captureSize.height),
               quality: Config.jpegQuality,
-              applicationName: blockedApplication.name
+              applicationName: placeholderName
             )
           })
         else {
@@ -370,7 +376,10 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
         _ = try saveScreenshotData(
           jpegData,
           capturedAt: captureTime,
-          idleSecondsAtCapture: idleSecondsAtCapture
+          idleSecondsAtCapture: idleSecondsAtCapture,
+          frontmostBundleId: nil,
+          frontmostAppName: nil,
+          frontmostWindowTitle: nil
         )
         dbg("🔒 Screenshot redacted for blocked foreground application")
         return
@@ -413,7 +422,10 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
       let fileURL = try saveScreenshotData(
         jpegData,
         capturedAt: captureTime,
-        idleSecondsAtCapture: idleSecondsAtCapture
+        idleSecondsAtCapture: idleSecondsAtCapture,
+        frontmostBundleId: appContext.bundleId,
+        frontmostAppName: appContext.name,
+        frontmostWindowTitle: appContext.windowTitle
       )
 
       dbg("📸 Screenshot saved: \(fileURL.lastPathComponent) (\(jpegData.count / 1024)KB)")
@@ -446,7 +458,10 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
   private func saveScreenshotData(
     _ jpegData: Data,
     capturedAt: Date,
-    idleSecondsAtCapture: Int?
+    idleSecondsAtCapture: Int?,
+    frontmostBundleId: String?,
+    frontmostAppName: String?,
+    frontmostWindowTitle: String?
   ) throws -> URL {
     let fileURL = StorageManager.shared.nextScreenshotURL()
     try jpegData.write(to: fileURL)
@@ -454,7 +469,10 @@ final class ScreenRecorder: NSObject, @unchecked Sendable {
     _ = StorageManager.shared.saveScreenshot(
       url: fileURL,
       capturedAt: capturedAt,
-      idleSecondsAtCapture: idleSecondsAtCapture
+      idleSecondsAtCapture: idleSecondsAtCapture,
+      frontmostBundleId: frontmostBundleId,
+      frontmostAppName: frontmostAppName,
+      frontmostWindowTitle: frontmostWindowTitle
     )
     return fileURL
   }
