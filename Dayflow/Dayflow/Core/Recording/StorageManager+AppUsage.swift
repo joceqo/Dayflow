@@ -4,15 +4,87 @@ import GRDB
 extension StorageManager {
   // MARK: - App Usage
 
-  /// Per-app aggregation for the App Usage tab. Sessions are derived from
+  /// Per-app aggregation for a single day. Sessions are derived from
   /// consecutive screenshots sharing `frontmost_bundle_id`; cards are linked
   /// to apps by time-range overlap (AppSites holds domains, not bundle IDs).
   func fetchAppUsage(forDay day: String) -> [AppUsageEntry] {
     guard let dayDate = dateFormatter.date(from: day) else { return [] }
     let (startTs, endTs) = dayBoundaryTimestamps(for: dayDate)
+    let cardBounds = fetchCardTimeBounds(forDay: day)
+    return aggregateAppUsage(
+      label: "day(\(day))",
+      startTs: startTs,
+      endTs: endTs,
+      cardBounds: cardBounds
+    )
+  }
+
+  /// Per-app aggregation across the week containing `date`. Reuses the same
+  /// session-grouping logic over a 7-day window; cross-day gaps > 5min still
+  /// split sessions, so longestSession remains well-defined.
+  func fetchAppUsage(forWeekContaining date: Date) -> [AppUsageEntry] {
+    let weekRange = TimelineWeekRange.containing(date)
+    let startTs = Int(weekRange.weekStart.timeIntervalSince1970)
+    let endTs = Int(weekRange.weekEnd.timeIntervalSince1970)
+    let cardBounds = weekRange.days.flatMap { fetchCardTimeBounds(forDay: $0.dayString) }
+    let label = "week(\(weekRange.days.first?.dayString ?? "?"))"
+    return aggregateAppUsage(
+      label: label,
+      startTs: startTs,
+      endTs: endTs,
+      cardBounds: cardBounds
+    )
+  }
+
+  /// Per-app session list for the inspector panel.
+  func fetchAppSessions(bundleId: String, forDay day: String) -> [AppSession] {
+    guard let dayDate = dateFormatter.date(from: day) else { return [] }
+    let (startTs, endTs) = dayBoundaryTimestamps(for: dayDate)
+    let normalizedTarget = bundleId.lowercased()
 
     let rows: [(bundleId: String, appName: String, capturedAt: Int)] =
-      (try? timedRead("fetchAppUsage(\(day))") { db in
+      (try? timedRead("fetchAppSessions(\(bundleId)/\(day))") { db in
+        try Row.fetchAll(
+          db,
+          sql: """
+                SELECT frontmost_bundle_id, frontmost_app_name, captured_at
+                FROM screenshots
+                WHERE captured_at >= ?
+                  AND captured_at < ?
+                  AND is_deleted = 0
+                  AND frontmost_bundle_id = ?
+                  AND idle_seconds_at_capture < 60
+                ORDER BY captured_at ASC
+            """, arguments: [startTs, endTs, bundleId]
+        )
+        .compactMap { row -> (String, String, Int)? in
+          guard let bid: String = row["frontmost_bundle_id"] else { return nil }
+          let name: String = row["frontmost_app_name"] ?? bid
+          let ts: Int = row["captured_at"]
+          return (bid, name, ts)
+        }
+      }) ?? []
+
+    // Mirror aggregateAppUsage's retroactive privacy filter.
+    let blocked = Set(
+      RecordingPrivacyPreferences.blockedApplicationIdentifiers().map { $0.lowercased() }
+    )
+    if blocked.contains(normalizedTarget) { return [] }
+
+    return groupSessionsByApp(rows: rows)[bundleId]?.map { $0.session } ?? []
+  }
+
+  // MARK: - Internals
+
+  // Shared aggregator for both Day and Week modes.
+  private func aggregateAppUsage(
+    label: String,
+    startTs: Int,
+    endTs: Int,
+    cardBounds: [(id: Int64, startTs: Int, endTs: Int)]
+  ) -> [AppUsageEntry] {
+    let rows: [(bundleId: String, appName: String, capturedAt: Int)] =
+      (try? timedRead("fetchAppUsage(\(label))") { db in
         try Row.fetchAll(
           db,
           sql: """
@@ -50,9 +122,6 @@ extension StorageManager {
     let sessionsByApp = groupSessionsByApp(rows: filtered)
     guard !sessionsByApp.isEmpty else { return [] }
 
-    // Pull card time bounds once and map each session's overlapping card IDs.
-    let cardBounds = fetchCardTimeBounds(forDay: day)
-
     var entries: [AppUsageEntry] = []
     entries.reserveCapacity(sessionsByApp.count)
     for (bundleId, sessions) in sessionsByApp {
@@ -87,46 +156,6 @@ extension StorageManager {
     entries.sort { $0.totalSeconds > $1.totalSeconds }
     return entries
   }
-
-  /// Per-app session list for the inspector panel.
-  func fetchAppSessions(bundleId: String, forDay day: String) -> [AppSession] {
-    guard let dayDate = dateFormatter.date(from: day) else { return [] }
-    let (startTs, endTs) = dayBoundaryTimestamps(for: dayDate)
-    let normalizedTarget = bundleId.lowercased()
-
-    let rows: [(bundleId: String, appName: String, capturedAt: Int)] =
-      (try? timedRead("fetchAppSessions(\(bundleId)/\(day))") { db in
-        try Row.fetchAll(
-          db,
-          sql: """
-                SELECT frontmost_bundle_id, frontmost_app_name, captured_at
-                FROM screenshots
-                WHERE captured_at >= ?
-                  AND captured_at < ?
-                  AND is_deleted = 0
-                  AND frontmost_bundle_id = ?
-                  AND idle_seconds_at_capture < 60
-                ORDER BY captured_at ASC
-            """, arguments: [startTs, endTs, bundleId]
-        )
-        .compactMap { row -> (String, String, Int)? in
-          guard let bid: String = row["frontmost_bundle_id"] else { return nil }
-          let name: String = row["frontmost_app_name"] ?? bid
-          let ts: Int = row["captured_at"]
-          return (bid, name, ts)
-        }
-      }) ?? []
-
-    // Mirror fetchAppUsage's retroactive privacy filter.
-    let blocked = Set(
-      RecordingPrivacyPreferences.blockedApplicationIdentifiers().map { $0.lowercased() }
-    )
-    if blocked.contains(normalizedTarget) { return [] }
-
-    return groupSessionsByApp(rows: rows)[bundleId]?.map { $0.session } ?? []
-  }
-
-  // MARK: - Internals
 
   // Each screenshot contributes min(gap_to_next, 30). A new session starts when
   // bundleId changes OR gap > 300s. Last screenshot in a session contributes

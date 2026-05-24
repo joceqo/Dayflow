@@ -3,7 +3,10 @@ import SwiftUI
 
 struct AppInspectorView: View {
   let entry: AppUsageEntry?
-  let totalDaySeconds: Int
+  let totalRangeSeconds: Int
+  // "today" or "this week" — used in the "X% of …" label so the unit matches
+  // the parent's mode.
+  let rangeLabel: String
 
   @State private var linkedCards: [TimelineCard] = []
   // Cache key: bundleId + sorted IDs. Refreshes triggered by the parent's
@@ -119,9 +122,9 @@ struct AppInspectorView: View {
 
   private func metaLabel(for entry: AppUsageEntry) -> String {
     let duration = formatHoursMinutes(seconds: entry.totalSeconds)
-    let dayTotal = max(totalDaySeconds, 1)
-    let pct = Int((Double(entry.totalSeconds) / Double(dayTotal) * 100).rounded())
-    return "\(duration) · \(pct)% of today"
+    let total = max(totalRangeSeconds, 1)
+    let pct = Int((Double(entry.totalSeconds) / Double(total) * 100).rounded())
+    return "\(duration) · \(pct)% of \(rangeLabel)"
   }
 
   private func statsRow(entry: AppUsageEntry) -> some View {

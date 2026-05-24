@@ -5,6 +5,9 @@ struct AppListView: View {
   let entries: [AppUsageEntry]
   @Binding var selectedBundleId: String?
   let isLoading: Bool
+  // "today" or "this week" — used in the "active … · N apps used" subtitle so
+  // the unit matches the parent's mode.
+  let rangeLabel: String
 
   private let visibleRowCutoff = 6
   // Stable palette for the day-timeline bar. Greys reserved for "other".
@@ -130,7 +133,7 @@ struct AppListView: View {
 
   private var emptyState: some View {
     VStack(spacing: 8) {
-      Text(isLoading ? "Loading…" : "No app activity for this day")
+      Text(isLoading ? "Loading…" : "No app activity for \(rangeLabel)")
         .font(.custom("Figtree", size: 13).weight(.medium))
         .foregroundColor(Color(hex: "8A8278"))
       if !isLoading {
@@ -149,7 +152,7 @@ struct AppListView: View {
   private var subtitleLabel: String {
     let count = entries.count
     let suffix = count == 1 ? "app" : "apps"
-    return "active today · \(count) \(suffix) used"
+    return "active \(rangeLabel) · \(count) \(suffix) used"
   }
 
   // Top 5 apps + "other" segment, sized in proportion to total active time.
