@@ -104,6 +104,9 @@ struct LocalLLMTestView: View {
   @State var isTesting = false
   @State var resultMessage: String?
   @State var success: Bool = false
+  @State private var aidockModels: [String] = []
+  @State private var aidockLoadedModels: Set<String> = []
+  @State private var aidockModelsMessage: String?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
@@ -122,24 +125,56 @@ struct LocalLLMTestView: View {
             .font(.custom("Figtree", size: 12))
             .fontWeight(.semibold)
             .foregroundColor(SettingsStyle.secondary)
-          TextField(
-            modelPlaceholder ?? LocalModelPreferences.defaultModelId(for: engine), text: $modelId
-          )
-          .textFieldStyle(.roundedBorder)
+
+          if engine == .aidock && !aidockModels.isEmpty {
+            Picker("Model", selection: $modelId) {
+              ForEach(aidockPickerOptions, id: \.self) { id in
+                Text(aidockDisplayName(for: id)).tag(id)
+              }
+            }
+            .labelsHidden()
+          } else {
+            TextField(
+              modelPlaceholder ?? LocalModelPreferences.defaultModelId(for: engine), text: $modelId
+            )
+            .textFieldStyle(.roundedBorder)
+          }
+
+          if engine == .aidock {
+            HStack(spacing: 8) {
+              Button(action: fetchAidockModels) {
+                Label("Refresh models", systemImage: "arrow.clockwise")
+                  .font(.custom("Figtree", size: 11))
+              }
+              .buttonStyle(.plain)
+              .foregroundColor(SettingsStyle.secondary)
+              .pointingHandCursor()
+
+              if let msg = aidockModelsMessage {
+                Text(msg)
+                  .font(.custom("Figtree", size: 11))
+                  .foregroundColor(SettingsStyle.meta)
+              }
+            }
+          }
         }
 
-        if engine == .custom {
+        if engine == .custom || engine == .aidock {
           VStack(alignment: .leading, spacing: 6) {
-            Text("API key (optional)")
+            Text(engine == .aidock ? "API key (auto-detected)" : "API key (optional)")
               .font(.custom("Figtree", size: 12))
               .fontWeight(.semibold)
               .foregroundColor(SettingsStyle.secondary)
-            SecureField("sk-live-...", text: $apiKey)
+            SecureField(engine == .aidock ? "read from ~/.config/ai-hub/token" : "sk-live-...", text: $apiKey)
               .textFieldStyle(.roundedBorder)
               .disableAutocorrection(true)
-            Text(credentialStorageDescription)
-              .font(.custom("Figtree", size: 11))
-              .foregroundColor(SettingsStyle.meta)
+            Text(
+              engine == .aidock
+                ? "aidock's bearer token. Left empty, Dayflow reads ~/.config/ai-hub/token automatically."
+                : credentialStorageDescription
+            )
+            .font(.custom("Figtree", size: 11))
+            .foregroundColor(SettingsStyle.meta)
           }
         }
       }
@@ -165,6 +200,69 @@ struct LocalLLMTestView: View {
         }
       }
     }
+    .onAppear {
+      if engine == .aidock { fetchAidockModels() }
+    }
+    .onChange(of: engine) { _, newEngine in
+      if newEngine == .aidock { fetchAidockModels() } else { aidockModels = [] }
+    }
+  }
+
+  // MARK: - aidock model catalogue
+
+  /// Ensure the current modelId is always a valid Picker tag, even if it isn't
+  /// in the fetched catalogue (custom value, stale entry, ...).
+  private var aidockPickerOptions: [String] {
+    let trimmed = modelId.trimmingCharacters(in: .whitespacesAndNewlines)
+    if !trimmed.isEmpty && !aidockModels.contains(trimmed) {
+      return [trimmed] + aidockModels
+    }
+    return aidockModels
+  }
+
+  private func aidockDisplayName(for id: String) -> String {
+    let bare = id.hasPrefix("lmstudio/") ? String(id.dropFirst("lmstudio/".count)) : id
+    return aidockLoadedModels.contains(bare) ? "\(id)  (loaded)" : id
+  }
+
+  private var effectiveAidockToken: String? {
+    if !trimmedAPIKey.isEmpty { return trimmedAPIKey }
+    return AidockDefaults.readToken()
+  }
+
+  private func fetchAidockModels() {
+    guard let base = URL(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines)),
+      let url = URL(string: "/models", relativeTo: base)
+    else {
+      aidockModelsMessage = "Invalid base URL"
+      return
+    }
+    var request = URLRequest(url: url)
+    if let token = effectiveAidockToken {
+      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    }
+    request.timeoutInterval = 5
+    aidockModelsMessage = "Loading catalogue…"
+
+    URLSession.shared.dataTask(with: request) { data, response, _ in
+      DispatchQueue.main.async {
+        guard let http = response as? HTTPURLResponse, http.statusCode == 200, let data,
+          let payload = try? JSONDecoder().decode(AidockModelsResponse.self, from: data)
+        else {
+          self.aidockModelsMessage = "Catalogue unavailable — is the aidock daemon running?"
+          self.aidockModels = []
+          return
+        }
+        // aidock routes "<provider>/<model>"; its catalogue lists LM Studio ids bare.
+        let chatModels = payload.data
+          .map(\.id)
+          .filter { !$0.localizedCaseInsensitiveContains("embed") }
+        self.aidockModels = chatModels.map { "lmstudio/\($0)" }
+        self.aidockLoadedModels = Set(payload.loaded ?? [])
+        self.aidockModelsMessage =
+          chatModels.isEmpty ? "No models in the aidock catalogue yet." : nil
+      }
+    }.resume()
   }
   func runTest() {
     guard !isTesting else { return }
@@ -201,6 +299,9 @@ struct LocalLLMTestView: View {
     }
     if engine == .custom && !trimmedAPIKey.isEmpty {
       request.setValue("Bearer \(trimmedAPIKey)", forHTTPHeaderField: "Authorization")
+    }
+    if engine == .aidock, let token = effectiveAidockToken {
+      request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
     let encoder = JSONEncoder()
     encoder.keyEncodingStrategy = .convertToSnakeCase
@@ -257,6 +358,15 @@ struct LocalLLMTestView: View {
       }
     }.resume()
   }
+}
+
+/// Shape of aidock's GET /models: OpenAI-style `data` array plus a `loaded` list.
+struct AidockModelsResponse: Codable {
+  struct Model: Codable {
+    let id: String
+  }
+  let data: [Model]
+  let loaded: [String]?
 }
 
 struct LocalLLMChatRequest: Codable {

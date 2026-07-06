@@ -538,6 +538,7 @@ struct LLMProviderSetupView: View {
                     .foregroundColor(.black.opacity(0.65))
                   Picker("Engine", selection: $setupState.localEngine) {
                     Text("LM Studio").tag(LocalEngine.lmstudio)
+                    Text("aidock").tag(LocalEngine.aidock)
                     Text("Custom model").tag(LocalEngine.custom)
                   }
                   .pickerStyle(.segmented)
@@ -552,7 +553,8 @@ struct LLMProviderSetupView: View {
                   modelId: $setupState.localModelId,
                   apiKey: $setupState.localAPIKey,
                   engine: setupState.localEngine,
-                  showInputs: setupState.localEngine == .custom,
+                  showInputs: setupState.localEngine == .custom
+                    || setupState.localEngine == .aidock,
                   onTestComplete: { success in
                     setupState.hasTestedConnection = true
                     setupState.testSuccessful = success

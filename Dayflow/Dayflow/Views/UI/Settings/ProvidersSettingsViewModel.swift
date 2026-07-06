@@ -20,6 +20,12 @@ final class ProvidersSettingsViewModel: ObservableObject {
       guard oldValue != localEngine else { return }
       UserDefaults.standard.set(localEngine.rawValue, forKey: "llmLocalEngine")
       LocalModelPreferences.syncPreset(for: localEngine, modelId: localModelId)
+      if localEngine == .aidock,
+        localAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+        let token = AidockDefaults.readToken()
+      {
+        localAPIKey = token
+      }
       refreshUpgradeBannerState()
     }
   }
@@ -777,6 +783,7 @@ final class ProvidersSettingsViewModel: ObservableObject {
       switch localEngine {
       case .ollama: engineName = "Ollama"
       case .lmstudio: engineName = "LM Studio"
+      case .aidock: engineName = "aidock"
       case .custom: engineName = "Custom"
       }
       let displayModel = localModelId.isEmpty ? "qwen2.5vl:3b" : localModelId
