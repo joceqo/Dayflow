@@ -559,6 +559,15 @@ final class StorageManager: StorageManaging, @unchecked Sendable {
                   PRIMARY KEY (batch_id, screenshot_id)
               );
               CREATE INDEX IF NOT EXISTS idx_batch_screenshots_screenshot ON batch_screenshots(screenshot_id);
+
+              -- Per-screenshot LLM descriptions, produced ahead of batch time by
+              -- the continuous (streaming) local analysis mode
+              CREATE TABLE IF NOT EXISTS screenshot_descriptions (
+                  screenshot_id INTEGER NOT NULL PRIMARY KEY REFERENCES screenshots(id) ON DELETE CASCADE,
+                  description TEXT NOT NULL,
+                  llm_model TEXT,
+                  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+              );
           """)
 
       // Journal entries table: stores daily intentions, reflections, and summaries

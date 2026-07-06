@@ -33,6 +33,11 @@ struct SettingsProvidersTabView: View {
 
       currentConfigurationSection
       connectionHealthSection
+
+      if viewModel.currentProvider == "ollama" {
+        localAnalysisLoadSection
+      }
+
       failoverRoutingSection
 
       if viewModel.currentProvider == .gemini {
@@ -205,6 +210,62 @@ struct SettingsProvidersTabView: View {
           Text("Hosted cards and transcription run through your Dayflow account.")
             .font(.custom("Figtree", size: 13))
             .foregroundColor(SettingsStyle.secondary)
+        }
+      }
+    }
+  }
+
+  // MARK: - Local analysis load
+
+  private var localAnalysisLoadSection: some View {
+    SettingsSection(
+      title: "Local analysis load",
+      subtitle: "Tune how hard local analysis pushes this Mac."
+    ) {
+      VStack(alignment: .leading, spacing: 18) {
+        Toggle(isOn: $viewModel.localStreamingAnalysis) {
+          VStack(alignment: .leading, spacing: 3) {
+            Text("Continuous analysis")
+              .font(.custom("Figtree", size: 14))
+              .fontWeight(.semibold)
+              .foregroundColor(SettingsStyle.text)
+            Text(
+              "Describe one screenshot per minute as you work instead of a burst of requests every 15 minutes. Same total work, but spread out — avoids CPU/GPU spikes from your local model."
+            )
+            .font(.custom("Figtree", size: 12))
+            .foregroundColor(SettingsStyle.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+        .toggleStyle(SwitchToggleStyle(tint: SettingsStyle.ink))
+        .pointingHandCursor()
+
+        HStack(alignment: .top, spacing: 12) {
+          VStack(alignment: .leading, spacing: 3) {
+            Text("Frames analyzed per batch")
+              .font(.custom("Figtree", size: 14))
+              .fontWeight(.semibold)
+              .foregroundColor(SettingsStyle.text)
+            Text(
+              "Fewer frames = lighter load but less detailed summaries. Default: \(LocalAnalysisPreferences.defaultFrameSamples)."
+            )
+            .font(.custom("Figtree", size: 12))
+            .foregroundColor(SettingsStyle.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+          }
+
+          Spacer()
+
+          Stepper(
+            value: $viewModel.localFrameSamples,
+            in: LocalAnalysisPreferences.frameSamplesRange
+          ) {
+            Text("\(viewModel.localFrameSamples)")
+              .font(.custom("Figtree", size: 14))
+              .fontWeight(.semibold)
+              .foregroundColor(SettingsStyle.text)
+              .frame(minWidth: 24, alignment: .trailing)
+          }
         }
       }
     }

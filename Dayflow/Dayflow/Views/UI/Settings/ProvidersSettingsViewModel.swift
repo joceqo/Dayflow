@@ -46,6 +46,18 @@ final class ProvidersSettingsViewModel: ObservableObject {
   @Published var localTestBaseURL = ""
   @Published var localTestModelID = ""
   @Published var localTestAPIKey = ""
+  @Published var localStreamingAnalysis: Bool {
+    didSet {
+      guard oldValue != localStreamingAnalysis else { return }
+      LocalAnalysisPreferences.setStreamingEnabled(localStreamingAnalysis)
+    }
+  }
+  @Published var localFrameSamples: Int {
+    didSet {
+      guard oldValue != localFrameSamples else { return }
+      LocalAnalysisPreferences.setFrameSamples(localFrameSamples)
+    }
+  }
   @Published var showLocalModelUpgradeBanner = false
   @Published var isShowingLocalModelUpgradeSheet = false
   @Published var upgradeStatusMessage: String?
@@ -151,6 +163,8 @@ final class ProvidersSettingsViewModel: ObservableObject {
     localTestBaseURL = localBaseURL
     localTestModelID = localModelId
     localTestAPIKey = localAPIKey
+    localStreamingAnalysis = LocalAnalysisPreferences.streamingEnabled
+    localFrameSamples = LocalAnalysisPreferences.frameSamples
 
     if let configuration = OpenAICompatiblePreferences.load() {
       openAICompatiblePreset = configuration.preset
