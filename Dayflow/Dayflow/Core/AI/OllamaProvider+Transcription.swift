@@ -463,28 +463,55 @@ extension OllamaProvider {
     let callStart = Date()
     let sortedScreenshots = screenshots.sorted { $0.capturedAt < $1.capturedAt }
 
-    // Sample ~15 evenly spaced screenshots to avoid hammering the local LLM
-    let targetSamples = 15
+    // Descriptions already produced ahead of time by the continuous analysis mode
+    let storedDescriptions = StorageManager.shared.fetchScreenshotDescriptions(
+      screenshotIds: sortedScreenshots.map { $0.id })
+
+    // Sample evenly spaced screenshots to avoid hammering the local LLM
+    let targetSamples = LocalAnalysisPreferences.frameSamples
     let strideAmount = max(1, sortedScreenshots.count / targetSamples)
     let sampledScreenshots = Swift.stride(from: 0, to: sortedScreenshots.count, by: strideAmount)
       .map { sortedScreenshots[$0] }
 
     // Calculate duration from timestamp range
-    let firstTs = sampledScreenshots.first!.capturedAt
-    let lastTs = sampledScreenshots.last!.capturedAt
+    let firstTs = sortedScreenshots.first!.capturedAt
+    let lastTs = sortedScreenshots.last!.capturedAt
     let durationSeconds = TimeInterval(lastTs - firstTs)
 
-    // Describe each screenshot
     var frameDescriptions: [(timestamp: TimeInterval, description: String)] = []
 
-    for screenshot in sampledScreenshots {
-      guard let frameData = loadScreenshotAsFrameData(screenshot, relativeTo: firstTs) else {
-        print("[OLLAMA] ⚠️ Failed to load screenshot: \(screenshot.filePath)")
-        continue
+    // If the continuous mode already described enough frames across the batch,
+    // use them directly and skip the per-frame LLM burst entirely.
+    let minimumStoredCoverage = max(3, targetSamples / 2)
+    if storedDescriptions.count >= minimumStoredCoverage {
+      print(
+        "[OLLAMA] ♻️ Using \(storedDescriptions.count) pre-computed frame descriptions (continuous mode)"
+      )
+      for screenshot in sortedScreenshots {
+        guard let description = storedDescriptions[screenshot.id] else { continue }
+        frameDescriptions.append(
+          (
+            timestamp: TimeInterval(screenshot.capturedAt - firstTs),
+            description: description
+          ))
       }
+    } else {
+      // Describe each sampled screenshot, reusing any stored description
+      for screenshot in sampledScreenshots {
+        if let stored = storedDescriptions[screenshot.id] {
+          frameDescriptions.append(
+            (timestamp: TimeInterval(screenshot.capturedAt - firstTs), description: stored))
+          continue
+        }
 
-      if let description = await getSimpleFrameDescription(frameData, batchId: batchId) {
-        frameDescriptions.append((timestamp: frameData.timestamp, description: description))
+        guard let frameData = loadScreenshotAsFrameData(screenshot, relativeTo: firstTs) else {
+          print("[OLLAMA] ⚠️ Failed to load screenshot: \(screenshot.filePath)")
+          continue
+        }
+
+        if let description = await getSimpleFrameDescription(frameData, batchId: batchId) {
+          frameDescriptions.append((timestamp: frameData.timestamp, description: description))
+        }
       }
     }
 
@@ -517,6 +544,20 @@ extension OllamaProvider {
     )
 
     return (observations, log)
+  }
+
+  /// Describe a single screenshot outside of batch processing. Used by the
+  /// continuous analysis mode to spread describe_frame calls over time
+  /// instead of bursting when a batch closes.
+  func describeScreenshotForStreaming(_ screenshot: Screenshot) async -> String? {
+    guard let frameData = loadScreenshotAsFrameData(screenshot, relativeTo: screenshot.capturedAt)
+    else {
+      print("[OLLAMA] ⚠️ Streaming: failed to load screenshot \(screenshot.filePath)")
+      return nil
+    }
+    let description = await getSimpleFrameDescription(frameData, batchId: nil)
+    guard let description, !description.isEmpty else { return nil }
+    return description
   }
 
   /// Load a screenshot file and convert it to FrameData for description

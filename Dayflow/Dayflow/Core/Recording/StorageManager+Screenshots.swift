@@ -101,6 +101,74 @@ extension StorageManager {
     }) ?? []
   }
 
+  // MARK: - Streaming frame descriptions (continuous local analysis)
+
+  func saveScreenshotDescription(screenshotId: Int64, description: String, llmModel: String?) {
+    try? timedWrite("saveScreenshotDescription") { db in
+      try db.execute(
+        sql: """
+              INSERT OR REPLACE INTO screenshot_descriptions(screenshot_id, description, llm_model)
+              VALUES (?, ?, ?)
+          """, arguments: [screenshotId, description, llmModel])
+    }
+  }
+
+  /// Descriptions keyed by screenshot id, for the given screenshots.
+  func fetchScreenshotDescriptions(screenshotIds: [Int64]) -> [Int64: String] {
+    guard !screenshotIds.isEmpty else { return [:] }
+    let placeholders = Array(repeating: "?", count: screenshotIds.count).joined(separator: ",")
+    let rows =
+      (try? timedRead("fetchScreenshotDescriptions") { db in
+        try Row.fetchAll(
+          db,
+          sql: """
+                SELECT screenshot_id, description FROM screenshot_descriptions
+                WHERE screenshot_id IN (\(placeholders))
+            """, arguments: StatementArguments(screenshotIds)
+        )
+      }) ?? []
+
+    var result: [Int64: String] = [:]
+    for row in rows {
+      if let id: Int64 = row["screenshot_id"], let description: String = row["description"] {
+        result[id] = description
+      }
+    }
+    return result
+  }
+
+  /// Screenshots not yet assigned to a batch and without a stored description,
+  /// oldest first. Used by the continuous analysis mode to pick its next frames.
+  func fetchScreenshotsAwaitingDescription(since oldestTimestamp: Int) -> [Screenshot] {
+    (try? timedRead("fetchScreenshotsAwaitingDescription") { db in
+      try Row.fetchAll(
+        db,
+        sql: """
+              SELECT * FROM screenshots
+              WHERE captured_at >= ?
+                AND is_deleted = 0
+                AND id NOT IN (SELECT screenshot_id FROM batch_screenshots)
+                AND id NOT IN (SELECT screenshot_id FROM screenshot_descriptions)
+              ORDER BY captured_at ASC
+          """, arguments: [oldestTimestamp]
+      )
+      .map(screenshot(from:))
+    }) ?? []
+  }
+
+  /// Capture timestamp of the most recent screenshot that already has a description.
+  func latestDescribedScreenshotTimestamp() -> Int? {
+    try? timedRead("latestDescribedScreenshotTimestamp") { db in
+      try Int.fetchOne(
+        db,
+        sql: """
+              SELECT MAX(s.captured_at) FROM screenshot_descriptions sd
+              JOIN screenshots s ON s.id = sd.screenshot_id
+          """
+      )
+    } ?? nil
+  }
+
   func fetchScreenshotsInTimeRange(startTs: Int, endTs: Int) -> [Screenshot] {
     (try? timedRead("fetchScreenshotsInTimeRange") { db in
       try Row.fetchAll(

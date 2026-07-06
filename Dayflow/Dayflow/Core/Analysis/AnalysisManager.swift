@@ -69,6 +69,11 @@ final class AnalysisManager: AnalysisManaging {
   }
 
   func triggerAnalysisNow() {
+    // Continuous local analysis: describe the next frame(s) ahead of batch
+    // time so batch processing doesn't burst per-frame LLM calls. No-op
+    // unless the setting is on and the local provider is active.
+    StreamingFrameDescriber.shared.tick()
+
     guard !isProcessing else { return }
     queue.async { [weak self] in self?.processRecordings() }
   }

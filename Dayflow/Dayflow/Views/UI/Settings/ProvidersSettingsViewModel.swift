@@ -49,6 +49,18 @@ final class ProvidersSettingsViewModel: ObservableObject {
       persistLocalAPIKey(localAPIKey)
     }
   }
+  @Published var localStreamingAnalysis: Bool {
+    didSet {
+      guard oldValue != localStreamingAnalysis else { return }
+      LocalAnalysisPreferences.setStreamingEnabled(localStreamingAnalysis)
+    }
+  }
+  @Published var localFrameSamples: Int {
+    didSet {
+      guard oldValue != localFrameSamples else { return }
+      LocalAnalysisPreferences.setFrameSamples(localFrameSamples)
+    }
+  }
   @Published var showLocalModelUpgradeBanner = false
   @Published var isShowingLocalModelUpgradeSheet = false
   @Published var upgradeStatusMessage: String?
@@ -136,6 +148,8 @@ final class ProvidersSettingsViewModel: ObservableObject {
     }
 
     localAPIKey = UserDefaults.standard.string(forKey: "llmLocalAPIKey") ?? ""
+    localStreamingAnalysis = LocalAnalysisPreferences.streamingEnabled
+    localFrameSamples = LocalAnalysisPreferences.frameSamples
     if let raw = UserDefaults.standard.string(forKey: "chatCLIPreferredTool") {
       preferredCLITool = CLITool(rawValue: raw)
     } else {
