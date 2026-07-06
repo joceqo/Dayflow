@@ -47,6 +47,11 @@ enum LocalModelPreset: String, CaseIterable, Codable {
       return "Qwen3-VL-4B-Instruct"
     case (.qwen25VL3B, .lmstudio):
       return "qwen2.5-vl-3b-instruct"
+    // aidock routes "<provider>/<model>"; it fronts LM Studio for local VLMs.
+    case (.qwen3VL4B, .aidock):
+      return "lmstudio/Qwen3-VL-4B-Instruct"
+    case (.qwen25VL3B, .aidock):
+      return "lmstudio/qwen2.5-vl-3b-instruct"
     case (.qwen3VL4B, _):
       return "qwen3-vl:4b"
     case (.qwen25VL3B, _):
@@ -71,6 +76,24 @@ enum LocalModelPreset: String, CaseIterable, Codable {
         buttonTitle: nil,
         buttonURL: nil,
         note: "Need to stay on Qwen2.5? Keep your current model selected and skip this upgrade."
+      )
+    case .aidock:
+      return LocalModelInstructionSet(
+        title: "Serve through aidock",
+        subtitle:
+          "aidock proxies LM Studio and loads/unloads models on demand, so you just need the model downloaded.",
+        bullets: [
+          "Make sure the aidock daemon is running (port 4774)",
+          "Download \"\(modelId(for: .lmstudio))\" in LM Studio's model browser",
+          "aidock will load it automatically on the first request",
+        ],
+        commandTitle: nil,
+        commandSubtitle: nil,
+        command: nil,
+        buttonTitle: "Open download in LM Studio",
+        buttonURL: lmStudioDownloadURL,
+        note:
+          "Dayflow reads the aidock token from ~/.config/ai-hub/token automatically."
       )
     case .lmstudio:
       return LocalModelInstructionSet(

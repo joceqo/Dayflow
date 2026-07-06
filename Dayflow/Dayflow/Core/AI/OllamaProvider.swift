@@ -15,11 +15,14 @@ final class OllamaProvider {
       return m
     }
     // Fallback to a sensible default
-    let engine: LocalEngine = isLMStudio ? .lmstudio : .ollama
+    let engine = LocalEngine(rawValue: localEngine) ?? .ollama
     return LocalModelPreferences.defaultModelId(for: engine)
   }
   var isLMStudio: Bool {
     (UserDefaults.standard.string(forKey: "llmLocalEngine") ?? "ollama") == "lmstudio"
+  }
+  var isAidock: Bool {
+    (UserDefaults.standard.string(forKey: "llmLocalEngine") ?? "ollama") == "aidock"
   }
   var isCustomEngine: Bool {
     (UserDefaults.standard.string(forKey: "llmLocalEngine") ?? "ollama") == "custom"
@@ -28,7 +31,11 @@ final class OllamaProvider {
     let trimmed =
       UserDefaults.standard.string(forKey: "llmLocalAPIKey")?.trimmingCharacters(
         in: .whitespacesAndNewlines) ?? ""
-    return trimmed.isEmpty ? nil : trimmed
+    if trimmed.isEmpty {
+      // aidock: fall back to the token the daemon writes on disk
+      return isAidock ? AidockDefaults.readToken() : nil
+    }
+    return trimmed
   }
 
   // Get the actual local engine type for analytics tracking

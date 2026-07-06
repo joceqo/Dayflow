@@ -152,7 +152,7 @@ struct SettingsProvidersTabView: View {
             modelId: $viewModel.localModelId,
             apiKey: $viewModel.localAPIKey,
             engine: viewModel.localEngine,
-            showInputs: viewModel.localEngine == .custom,
+            showInputs: viewModel.localEngine == .custom || viewModel.localEngine == .aidock,
             onTestComplete: { _ in viewModel.handleLocalTestCompletion() }
           )
         case "chatgpt_claude":
@@ -746,6 +746,7 @@ struct LocalModelUpgradeSheet: View {
           Picker("Engine", selection: $selectedEngine) {
             Text("Ollama").tag(LocalEngine.ollama)
             Text("LM Studio").tag(LocalEngine.lmstudio)
+            Text("aidock").tag(LocalEngine.aidock)
             Text("Custom").tag(LocalEngine.custom)
           }
           .pickerStyle(.segmented)
@@ -791,7 +792,7 @@ struct LocalModelUpgradeSheet: View {
       candidateModelId = preset.modelId(for: newEngine == .custom ? .ollama : newEngine)
       if newEngine != .custom {
         candidateBaseURL = newEngine.defaultBaseURL
-        candidateAPIKey = ""
+        candidateAPIKey = newEngine == .aidock ? (AidockDefaults.readToken() ?? "") : ""
       }
     }
   }

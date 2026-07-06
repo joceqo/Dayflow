@@ -454,6 +454,12 @@ extension ProviderSetupState {
     if engine != .custom {
       localBaseURL = engine.defaultBaseURL
     }
+    if engine == .aidock,
+      localAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+      let token = AidockDefaults.readToken()
+    {
+      localAPIKey = token
+    }
     let defaultModel = LocalModelPreferences.defaultModelId(
       for: engine == .custom ? .ollama : engine)
     localModelId = defaultModel
@@ -473,7 +479,16 @@ extension ProviderSetupState {
   var localCurlCommand: String {
     let payload =
       "{\"model\":\"\(localModelId)\",\"messages\":[{\"role\":\"user\",\"content\":\"Say 'hello' and your model name.\"}],\"max_tokens\":50}"
-    let authHeader = localEngine == .lmstudio ? " -H \"Authorization: Bearer lm-studio\"" : ""
+    let authHeader: String
+    switch localEngine {
+    case .lmstudio:
+      authHeader = " -H \"Authorization: Bearer lm-studio\""
+    case .aidock:
+      let token = AidockDefaults.readToken() ?? "$(cat ~/.config/ai-hub/token)"
+      authHeader = " -H \"Authorization: Bearer \(token)\""
+    case .ollama, .custom:
+      authHeader = ""
+    }
     let endpoint =
       LocalEndpointUtilities.chatCompletionsURL(baseURL: localBaseURL)?.absoluteString
       ?? "\(localBaseURL)/v1/chat/completions"
