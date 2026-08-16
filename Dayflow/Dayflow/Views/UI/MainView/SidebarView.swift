@@ -80,7 +80,9 @@ struct SidebarView: View {
 
   private var visibleIcons: [SidebarIcon] {
     SidebarIcon.allCases.filter { icon in
-      icon != .journal && icon != .agents
+      // L'amont masque `.agents` en attendant sa beta ; le code de l'onglet est
+      // complet et sans verrou de licence, donc on l'ouvre dans cette build.
+      icon != .journal
     }
   }
 

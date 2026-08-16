@@ -32,7 +32,13 @@ final class AgentsRecapStore: ObservableObject {
   /// How long the headless sweep may take before we give up. A heavy day of
   /// sessions has been observed to exceed 15 minutes, so allow 30.
   private static let runTimeoutSeconds: TimeInterval = 1800
-  private static let model = "claude-fable-5"
+  /// Opus plutôt que le `claude-fable-5` d'amont. Le prompt délègue déjà toute
+  /// l'extraction mécanique à des sous-agents `sonnet` et ne garde pour ce
+  /// modèle-ci que le REGROUPEMENT en workstreams et les statuts — soit la seule
+  /// partie qui relève du jugement. Économiser dessus, c'est économiser sur la
+  /// seule étape qui ne s'économise pas ; et à un run par jour, le surcoût est
+  /// marginal au regard de l'usage Opus quotidien de cette machine.
+  private static let model = "claude-opus-5"
 
   struct RecapRunError: Error, Sendable {
     let message: String
