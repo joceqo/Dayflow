@@ -166,11 +166,14 @@ final class ProvidersSettingsViewModel: ObservableObject {
     }
 
     localAPIKey = UserDefaults.standard.string(forKey: "llmLocalAPIKey") ?? ""
+    // Ces deux-là D'ABORD : les `localTest*` ci-dessous lisent `self`, ce que Swift
+    // interdit tant qu'une propriété stockée reste non initialisée.
+    localStreamingAnalysis = LocalAnalysisPreferences.streamingEnabled
+    localFrameSamples = LocalAnalysisPreferences.frameSamples
+
     localTestBaseURL = localBaseURL
     localTestModelID = localModelId
     localTestAPIKey = localAPIKey
-    localStreamingAnalysis = LocalAnalysisPreferences.streamingEnabled
-    localFrameSamples = LocalAnalysisPreferences.frameSamples
 
     if let configuration = OpenAICompatiblePreferences.load() {
       openAICompatiblePreset = configuration.preset

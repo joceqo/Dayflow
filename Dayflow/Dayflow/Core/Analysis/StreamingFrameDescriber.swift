@@ -31,7 +31,10 @@ final class StreamingFrameDescriber {
   /// Called once a minute from AnalysisManager's timer.
   func tick() {
     guard LocalAnalysisPreferences.streamingEnabled else { return }
-    guard LLMProviderID.from(LLMProviderType.load()) == .ollama else { return }
+    // v2.1.0 a remplacé `LLMProviderType.load()` par le store de routage, et le cas
+    // `.ollama` par `.local`. Un store illisible laisse le tick passer son tour :
+    // décrire des frames avec un routage inconnu serait pire que ne rien décrire.
+    guard (try? LLMProviderRoutingStore.load())?.primary == .local else { return }
     guard tryBeginRun() else { return }
 
     Task.detached(priority: .utility) { [weak self] in

@@ -34,7 +34,7 @@ struct SettingsProvidersTabView: View {
       currentConfigurationSection
       connectionHealthSection
 
-      if viewModel.currentProvider == "ollama" {
+      if viewModel.currentProvider == .local {
         localAnalysisLoadSection
       }
 
